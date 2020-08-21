@@ -1,4 +1,4 @@
-# LACHAIN COMMUNICAION HUB
+# LACHAIN COMMUNICATION HUB
 
 LibP2P based solution for P2P communication of LACHAIN nodes
 
