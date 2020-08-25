@@ -36,6 +36,12 @@ func New(id string) Peer {
 	}
 	localPeer := Peer{localHost, make(map[string]network.Stream)}
 
+	defaultMsgHandler := func(msg []byte) {
+		fmt.Println("Msg received:", msg)
+	}
+
+	localPeer.SetMsgHandler(defaultMsgHandler)
+
 	return localPeer
 }
 

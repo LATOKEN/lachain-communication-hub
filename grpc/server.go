@@ -15,20 +15,19 @@ import (
 
 type server struct {
 	pb.UnimplementedCommunicationHubServer
+	peer *peer.Peer
 }
-
-var Peer *peer.Peer
 
 func (s *server) GetKey(ctx context.Context, in *pb.GetHubIdRequest) (*pb.GetHubIdReply, error) {
 	log.Printf("Received: Get Key Request")
 	return &pb.GetHubIdReply{
-		Id: Peer.GetId(),
+		Id: s.peer.GetId(),
 	}, nil
 }
 
 func (s *server) Init(ctx context.Context, in *pb.InitRequest) (*pb.InitReply, error) {
 	log.Printf("Received: Init Request")
-	Peer.Register(in.GetSignature())
+	s.peer.Register(in.GetSignature())
 	return &pb.InitReply{
 		// TODO: check real result
 		Result: true,
@@ -48,7 +47,7 @@ func (s *server) Communicate(srv pb.CommunicationHub_CommunicateServer) error {
 		}
 	}
 
-	Peer.SetMsgHandler(onMsg)
+	s.peer.SetMsgHandler(onMsg)
 
 	for {
 
@@ -74,7 +73,7 @@ func (s *server) Communicate(srv pb.CommunicationHub_CommunicateServer) error {
 
 		fmt.Println("Sending message to peer", hex.EncodeToString(req.PublicKey))
 
-		Peer.SendMessageToPeer(hex.EncodeToString(req.PublicKey), req.Data)
+		s.peer.SendMessageToPeer(hex.EncodeToString(req.PublicKey), req.Data)
 	}
 }
 
@@ -85,13 +84,13 @@ func runServer(s *grpc.Server, lis net.Listener) {
 }
 
 func New(port string, localPeer *peer.Peer) *server {
-	Peer = localPeer
+	p := localPeer
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	server := &server{}
+	server := &server{peer: p}
 	pb.RegisterCommunicationHubServer(s, server)
 	go runServer(s, lis)
 	return server
