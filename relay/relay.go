@@ -2,7 +2,9 @@ package relay
 
 import (
 	"bufio"
+	"encoding/hex"
 	"fmt"
+	crypto3 "github.com/ethereum/go-ethereum/crypto"
 	"github.com/libp2p/go-libp2p-core/network"
 	"lachain-communication-hub/communication"
 	"lachain-communication-hub/host"
@@ -55,9 +57,11 @@ func handleRegister(s network.Stream) {
 
 	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
 
-	peerId := s.Conn().RemotePeer().Pretty()
+	peerId, err := s.Conn().RemotePeer().Marshal()
 
-	publicKey, err := communication.ReadOnce(rw)
+	hash := crypto3.Keccak256(peerId)
+
+	signature, err := communication.ReadOnce(rw)
 	if err != nil {
 		if err.Error() == "stream reset" {
 			fmt.Println("Connection closed by peer")
@@ -66,9 +70,17 @@ func handleRegister(s network.Stream) {
 		panic(err)
 	}
 
-	fmt.Println("Peer registration", peerId)
+	publicKey, err := crypto3.SigToPub(hash, signature)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
-	storage.RegisterPeer(string(publicKey), peerId)
+	pubHex := hex.EncodeToString(crypto3.CompressPubkey(publicKey))
+
+	fmt.Printf("Peer registration, id: %s, pubKey: %s\n", s.Conn().RemotePeer().Pretty(), pubHex)
+
+	storage.RegisterPeer(pubHex, s.Conn().RemotePeer().Pretty())
 
 	s.Close()
 }

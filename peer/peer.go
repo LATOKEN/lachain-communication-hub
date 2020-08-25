@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	core "github.com/libp2p/go-libp2p-core"
-	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	swarm "github.com/libp2p/go-libp2p-swarm"
@@ -31,29 +30,16 @@ func New(id string) Peer {
 		Addrs: []ma.Multiaddr{config.GetRelayMultiaddr()},
 	}
 
-	localHost.SetStreamHandler("/hub", handleHubMsg)
-
 	// Connect to relay
 	if err := localHost.Connect(context.Background(), relayInfo); err != nil {
 		panic(err)
 	}
 	localPeer := Peer{localHost, make(map[string]network.Stream)}
 
-	localPeer.register()
-
 	return localPeer
 }
 
-func (localPeer *Peer) register() {
-
-	publicKey := localPeer.host.Peerstore().PubKey(localPeer.host.ID())
-
-	pubKeyBytes, err := crypto.MarshalPublicKey(publicKey)
-
-	publicKeyHex := hex.EncodeToString(pubKeyBytes)
-	if err != nil {
-		panic(err)
-	}
+func (localPeer *Peer) register(signature []byte) {
 
 	s, err := localPeer.host.NewStream(context.Background(), config.GetRelayID(), "/register")
 	if err != nil {
@@ -61,10 +47,10 @@ func (localPeer *Peer) register() {
 	}
 
 	fmt.Println("peer registration")
-	fmt.Println("publicKey", publicKeyHex)
+	fmt.Println("signature", hex.EncodeToString(signature))
 	fmt.Println("peerId", localPeer.host.ID())
 
-	_, err = s.Write([]byte(publicKeyHex))
+	_, err = s.Write(signature)
 	if err != nil {
 		panic(err)
 	}
@@ -72,6 +58,10 @@ func (localPeer *Peer) register() {
 	confirmHandle(s)
 
 	s.Close()
+}
+
+func (localPeer *Peer) Register(signature []byte) {
+	localPeer.register(signature)
 }
 
 func (localPeer *Peer) connectToPeer(publicKey string) (network.Stream, error) {
@@ -104,6 +94,8 @@ func (localPeer *Peer) connectToPeer(publicKey string) (network.Stream, error) {
 		fmt.Println("Peer not found")
 		return nil, err
 	}
+
+	fmt.Println("reqesuted peer id", peerId)
 
 	// Creates a relay address
 	relayedAddr, err := ma.NewMultiaddr("/p2p/" + config.GetRelayID().Pretty() + "/p2p-circuit/p2p/" + peerId.Pretty())
@@ -138,7 +130,7 @@ func (localPeer *Peer) connectToPeer(publicKey string) (network.Stream, error) {
 
 func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte) {
 
-	fmt.Println("sending message to peer")
+	fmt.Println("This peer Id:", localPeer.host.ID())
 	s, err := localPeer.connectToPeer(publicKey)
 	if err != nil {
 		fmt.Println("Can't establish connection with", publicKey)
@@ -172,6 +164,18 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) []byte {
 		panic(err)
 	}
 	return msg
+}
+
+func (localPeer *Peer) SetMsgHandler(callback func(msg []byte)) {
+	localPeer.host.SetStreamHandler("/hub", hubMsgHandler(callback))
+}
+
+func (localPeer *Peer) GetId() []byte {
+	id, err := localPeer.host.ID().Marshal()
+	if err != nil {
+		panic(err)
+	}
+	return id
 }
 
 func (localPeer *Peer) RequestDataFromPeer(publicKey string, data []byte) []byte {

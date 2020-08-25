@@ -6,6 +6,7 @@ import (
 )
 
 const RelayAddr = "/ip4/95.217.215.141/tcp/37645"
+const GRPCPort = ":50001"
 
 func GetRelayMultiaddr() ma.Multiaddr {
 	relayMultiaddr, err := ma.NewMultiaddr(RelayAddr)

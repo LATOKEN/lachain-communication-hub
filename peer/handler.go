@@ -8,24 +8,29 @@ import (
 	"lachain-communication-hub/communication"
 )
 
-func handleHubMsg(s network.Stream) {
-	defer s.Close()
-	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
+func hubMsgHandler(onMsg func(msg []byte)) func(s network.Stream) {
+	return func(s network.Stream) {
+		defer s.Close()
+		rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
 
-	msg, err := communication.ReadOnce(rw)
-	if err != nil {
-		fmt.Println("Can't read message")
-		fmt.Println(err)
-	}
-
-	fmt.Println("received msg from peer:", s.Conn().RemotePeer())
-	fmt.Println("msg:", string(msg))
-
-	switch string(msg) {
-	case "ping":
-		_, err := s.Write([]byte("pong"))
+		msg, err := communication.ReadOnce(rw)
 		if err != nil {
-			panic(err)
+			fmt.Println("Can't read message")
+			fmt.Println(err)
+			return
+		}
+
+		onMsg(msg)
+
+		fmt.Println("received msg from peer:", s.Conn().RemotePeer())
+		fmt.Println("msg:", string(msg))
+
+		switch string(msg) {
+		case "ping":
+			_, err := s.Write([]byte("pong"))
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 }
@@ -37,4 +42,5 @@ func confirmHandle(s network.Stream) {
 	if err != io.EOF {
 		panic(err)
 	}
+
 }
