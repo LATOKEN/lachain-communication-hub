@@ -89,9 +89,8 @@ func BuildNamedHost(typ int, postfix string) core.Host {
 		}
 		return host
 	case types.Relay:
-		multiaddr, err := ma.NewMultiaddr("/ip4/0.0.0.0/tcp/37645")
 		addrOpt := func(c *config.Config) error {
-			c.ListenAddrs = []ma.Multiaddr{multiaddr}
+			c.ListenAddrs = []ma.Multiaddr{conf.GetRelayMultiaddr()}
 			return nil
 		}
 		host, err := libp2p.New(context.Background(), libp2p.ListenAddrs(conf.GetRelayMultiaddr()), libp2p.EnableRelay(circuit.OptHop), prvKeyOpt, addrOpt)

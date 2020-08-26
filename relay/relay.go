@@ -10,6 +10,7 @@ import (
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/storage"
 	"lachain-communication-hub/types"
+	"lachain-communication-hub/utils"
 
 	"github.com/libp2p/go-libp2p-core/peer"
 )
@@ -59,8 +60,6 @@ func handleRegister(s network.Stream) {
 
 	peerId, err := s.Conn().RemotePeer().Marshal()
 
-	hash := crypto3.Keccak256(peerId)
-
 	signature, err := communication.ReadOnce(rw)
 	if err != nil {
 		if err.Error() == "stream reset" {
@@ -70,7 +69,7 @@ func handleRegister(s network.Stream) {
 		panic(err)
 	}
 
-	publicKey, err := crypto3.SigToPub(hash, signature)
+	publicKey, err := utils.EcRecover(peerId, signature)
 	if err != nil {
 		fmt.Println(err)
 		return

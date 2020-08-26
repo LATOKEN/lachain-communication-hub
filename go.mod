@@ -7,6 +7,7 @@ require (
 	github.com/libp2p/go-libp2p-circuit v0.3.1
 	github.com/libp2p/go-libp2p-core v0.6.1
 	github.com/libp2p/go-libp2p-swarm v0.2.8
+	github.com/magiconair/properties v1.8.0
 	github.com/multiformats/go-multiaddr v0.2.2
 	github.com/opentracing/opentracing-go v1.2.0
 	google.golang.org/grpc v1.31.0

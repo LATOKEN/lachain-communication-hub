@@ -50,8 +50,6 @@ func (s *server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 
 	s.peer.SetStreamHandler(onMsg)
 
-	sent := false
-
 	for {
 
 		// exit if context is done
@@ -61,12 +59,6 @@ func (s *server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 			return ctx.Err()
 		default:
 		}
-
-		if sent {
-			continue
-		}
-
-		sent = true
 
 		// receive data from stream
 		req, err := stream.Recv()

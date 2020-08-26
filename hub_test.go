@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	crypto2 "github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/magiconair/properties/assert"
 	"google.golang.org/grpc"
 	"io"
 	"lachain-communication-hub/config"
 	server "lachain-communication-hub/grpc"
 	"lachain-communication-hub/peer"
+	"lachain-communication-hub/utils"
 	"log"
 	"os"
 	"testing"
@@ -83,16 +85,15 @@ func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, [
 	}
 	cancel()
 
-	prv, err := crypto2.GenerateKey()
+	prv, err := crypto.GenerateKey()
 	if err != nil {
 		log.Fatalf("could not: %v", err)
 	}
-	pub := crypto2.CompressPubkey(&prv.PublicKey)
+	pub := crypto.CompressPubkey(&prv.PublicKey)
 
 	fmt.Println("pubKey", hex.EncodeToString(pub))
 
-	hash := crypto2.Keccak256Hash(getKeyResult.Id)
-	signature, err := crypto2.Sign(hash.Bytes(), prv)
+	signature, err := utils.LaSign(getKeyResult.Id, prv)
 	if err != nil {
 		panic(err)
 	}
@@ -108,4 +109,31 @@ func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, [
 
 	log.Println("init result:", initR.Result)
 	return conn, pub, p
+}
+
+func TestSign(t *testing.T) {
+	prvHex, err := hex.DecodeString("D95D6DB65F3E2223703C5D8E205D98E3E6B470F067B0F94F6C6BF73D4301CE48")
+	if err != nil {
+		panic(err)
+	}
+
+	prv := crypto.ToECDSAUnsafe(prvHex)
+
+	data := []byte("some data")
+
+	signature, err := utils.LaSign(data, prv)
+	if err != nil {
+		panic(err)
+	}
+
+	assert.Equal(t,
+		hex.EncodeToString(signature),
+		"ed3e192cccda310293c5f968930bf859a9205a08533785ec53229cbb0ce30f3a62597a50ed68f6b1f80e47752a01f831324575f8e8e1114eaf2af7ee785b96ac75")
+
+	recovered, err := utils.EcRecover(data, signature)
+	if err != nil {
+		panic(err)
+	}
+
+	assert.Equal(t, recovered, &prv.PublicKey)
 }
