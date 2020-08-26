@@ -65,11 +65,11 @@ func (s *server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 		if err == io.EOF {
 			// return will close stream from server side
 			log.Println("exit")
-			return nil
+			return err
 		}
 		if err != nil {
-			log.Printf("receive error %v", err)
-			continue
+			panic(err)
+			return nil
 		}
 
 		fmt.Println("Sending message to peer", hex.EncodeToString(req.PublicKey))
