@@ -75,10 +75,9 @@ func GetPrivateKeyForHost(postfix string) crypto.PrivKey {
 }
 
 func BuildNamedHost(typ int, postfix string) core.Host {
-	prv := GetPrivateKeyForHost(postfix)
 
 	prvKeyOpt := func(c *config.Config) error {
-		c.PeerKey = prv
+		c.PeerKey = GetPrivateKeyForHost(postfix)
 		return nil
 	}
 

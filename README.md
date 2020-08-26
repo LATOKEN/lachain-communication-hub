@@ -30,16 +30,8 @@ Relay-node
 ```
 
 
-Peer1
+Peer
 
 ```
-    ./hub -h1
+    ./hub
 ```
-
-
-Peer2
-
-```
-    ./hub -h2
-```
-

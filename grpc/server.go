@@ -34,20 +34,23 @@ func (s *server) Init(ctx context.Context, in *pb.InitRequest) (*pb.InitReply, e
 	}, nil
 }
 
-func (s *server) Communicate(srv pb.CommunicationHub_CommunicateServer) error {
+func (s *server) Communicate(stream pb.CommunicationHub_CommunicateServer) error {
 
-	log.Println("start new server")
+	log.Println("Started new communication server")
 
-	ctx := srv.Context()
+	ctx := stream.Context()
 
 	onMsg := func(msg []byte) {
+		log.Println("Received msg, sending via rpc to client")
 		resp := pb.OutboundMessage{Data: msg}
-		if err := srv.Send(&resp); err != nil {
+		if err := stream.Send(&resp); err != nil {
 			log.Printf("send error %v", err)
 		}
 	}
 
-	s.peer.SetMsgHandler(onMsg)
+	s.peer.SetStreamHandler(onMsg)
+
+	sent := false
 
 	for {
 
@@ -59,8 +62,14 @@ func (s *server) Communicate(srv pb.CommunicationHub_CommunicateServer) error {
 		default:
 		}
 
+		if sent {
+			continue
+		}
+
+		sent = true
+
 		// receive data from stream
-		req, err := srv.Recv()
+		req, err := stream.Recv()
 		if err == io.EOF {
 			// return will close stream from server side
 			log.Println("exit")
@@ -72,12 +81,12 @@ func (s *server) Communicate(srv pb.CommunicationHub_CommunicateServer) error {
 		}
 
 		fmt.Println("Sending message to peer", hex.EncodeToString(req.PublicKey))
-
 		s.peer.SendMessageToPeer(hex.EncodeToString(req.PublicKey), req.Data)
 	}
 }
 
 func runServer(s *grpc.Server, lis net.Listener) {
+	log.Println("GRPC server is listening on", lis.Addr())
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}

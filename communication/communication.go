@@ -14,7 +14,7 @@ func ReadOnce(rw *bufio.ReadWriter) ([]byte, error) {
 		return nil, err
 	}
 
-	return msg[0:n], nil
+	return msg[:n], nil
 }
 
 func WriteOnce(rw *bufio.ReadWriter, msg []byte) {

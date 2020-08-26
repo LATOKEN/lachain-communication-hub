@@ -11,6 +11,7 @@ import (
 	server "lachain-communication-hub/grpc"
 	"lachain-communication-hub/peer"
 	"log"
+	"os"
 	"testing"
 	"time"
 
@@ -24,11 +25,13 @@ const (
 
 func TestCommunication(t *testing.T) {
 	// connect clients
-	conn1, _ := registerPeer("_h1", config.GRPCPort, address1)
+	conn1, _, peer1 := makeServerPeer("_h1", config.GRPCPort, address1)
 	defer conn1.Close()
 
-	conn2, pub := registerPeer("_h2", ":50002", address2)
+	conn2, pub, _ := makeServerPeer("_h2", ":50002", address2)
 	defer conn2.Close()
+
+	_ = peer1
 
 	client := pb.NewCommunicationHubClient(conn1)
 	stream, err := client.Communicate(context.Background())
@@ -36,54 +39,35 @@ func TestCommunication(t *testing.T) {
 		log.Fatalf("openn stream error %v", err)
 	}
 
-	ctx := stream.Context()
-	done := make(chan bool)
-
 	go func() {
 		req := pb.InboundMessage{
 			PublicKey: pub,
-			Data:      []byte("test"),
+			Data:      []byte("ping"),
 		}
 		if err := stream.Send(&req); err != nil {
 			log.Fatalf("can not send %v", err)
 		}
 	}()
 
-	// second goroutine receives data from stream
-	// and saves result in max variable
-	//
-	// if stream is finished it closes done channel
 	go func() {
 		for {
 			resp, err := stream.Recv()
 			if err == io.EOF {
-				close(done)
+				fmt.Println("EOF")
 				return
 			}
 			if err != nil {
 				log.Fatalf("can not receive %v", err)
 			}
-			log.Println("new msg received", string(resp.Data))
+			log.Println("received grpc message:", string(resp.Data))
+			os.Exit(1)
 		}
 	}()
-
-	// third goroutine closes done channel
-	// if context is done
-	go func() {
-		<-ctx.Done()
-		if err := ctx.Err(); err != nil {
-			log.Println(err)
-		}
-		close(done)
-	}()
-
-	<-done
-	log.Println("finished")
 }
 
-func registerPeer(id string, port string, address string) (*grpc.ClientConn, []byte) {
-	peer := peer.New(id)
-	server.New(port, &peer)
+func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, []byte, peer.Peer) {
+	p := peer.New(id)
+	server.New(port, &p)
 
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
@@ -100,6 +84,9 @@ func registerPeer(id string, port string, address string) (*grpc.ClientConn, []b
 	cancel()
 
 	prv, err := crypto2.GenerateKey()
+	if err != nil {
+		log.Fatalf("could not: %v", err)
+	}
 	pub := crypto2.CompressPubkey(&prv.PublicKey)
 
 	fmt.Println("pubKey", hex.EncodeToString(pub))
@@ -120,5 +107,5 @@ func registerPeer(id string, port string, address string) (*grpc.ClientConn, []b
 	cancel()
 
 	log.Println("init result:", initR.Result)
-	return conn, pub
+	return conn, pub, p
 }

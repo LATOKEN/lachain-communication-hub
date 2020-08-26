@@ -6,32 +6,55 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"io"
 	"lachain-communication-hub/communication"
+	"log"
+	"time"
 )
 
-func hubMsgHandler(onMsg func(msg []byte)) func(s network.Stream) {
+func incomingConnectionEstablishmentHandler(onMsg func(msg []byte)) func(s network.Stream) {
 	return func(s network.Stream) {
-		defer s.Close()
 		rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
+		go runHubMsgHandler(rw, onMsg, s)
+	}
+}
 
+func runHubMsgHandler(rw *bufio.ReadWriter, onMsg func(msg []byte), s network.Stream) {
+	for {
 		msg, err := communication.ReadOnce(rw)
 		if err != nil {
+			if err == io.EOF {
+				fmt.Println("connection resetted")
+				time.Sleep(2 * time.Second)
+				continue
+			}
 			fmt.Println("Can't read message")
 			fmt.Println(err)
-			return
+			break
 		}
 
-		onMsg(msg)
+		processMessage(onMsg, s, msg)
+	}
+}
 
-		fmt.Println("received msg from peer:", s.Conn().RemotePeer())
-		fmt.Println("msg:", string(msg))
+func processMessage(onMsg func([]byte), s network.Stream, msg []byte) {
+	onMsg(msg)
 
-		switch string(msg) {
-		case "ping":
-			_, err := s.Write([]byte("pong"))
-			if err != nil {
-				panic(err)
-			}
+	log.Println("received msg from peer:", s.Conn().RemotePeer(), "msg:", string(msg))
+
+	switch string(msg) {
+	case "ping":
+		_, err := s.Write([]byte("pong"))
+		if err != nil {
+			panic(err)
 		}
+		break
+
+		//case "pong":
+		//	time.Sleep(2 * time.Second)
+		//	_, err := s.Write([]byte("ping"))
+		//	if err != nil {
+		//		panic(err)
+		//	}
+		//	break
 	}
 }
 

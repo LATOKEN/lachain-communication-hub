@@ -18,8 +18,9 @@ import (
 )
 
 type Peer struct {
-	host    core.Host
-	streams map[string]network.Stream
+	host           core.Host
+	streams        map[string]network.Stream
+	grpcMsgHandler func([]byte)
 }
 
 func New(id string) Peer {
@@ -34,13 +35,13 @@ func New(id string) Peer {
 	if err := localHost.Connect(context.Background(), relayInfo); err != nil {
 		panic(err)
 	}
-	localPeer := Peer{localHost, make(map[string]network.Stream)}
+	localPeer := Peer{localHost, make(map[string]network.Stream), nil}
 
 	defaultMsgHandler := func(msg []byte) {
-		fmt.Println("Msg received:", msg)
+		fmt.Println(localPeer.host.ID(), "Here is should be grpc callback with msg:", string(msg))
 	}
 
-	localPeer.SetMsgHandler(defaultMsgHandler)
+	localPeer.SetStreamHandler(defaultMsgHandler)
 
 	return localPeer
 }
@@ -70,43 +71,40 @@ func (localPeer *Peer) Register(signature []byte) {
 	localPeer.register(signature)
 }
 
-func (localPeer *Peer) connectToPeer(publicKey string) (network.Stream, error) {
-
-	if conn, ok := localPeer.streams[publicKey]; ok {
-		return conn, nil
+func (localPeer *Peer) connectToPeer(publicKey string) error {
+	if _, ok := localPeer.streams[publicKey]; ok {
+		return nil
 	}
 
-	s, err := localPeer.host.NewStream(context.Background(), config.GetRelayID(), "/getPeerAddr")
+	relayStream, err := localPeer.host.NewStream(context.Background(), config.GetRelayID(), "/getPeerAddr")
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	_, err = s.Write([]byte(publicKey))
+	_, err = relayStream.Write([]byte(publicKey))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
+	rw := bufio.NewReadWriter(bufio.NewReader(relayStream), bufio.NewWriter(relayStream))
 
 	peerIdBytes, err := communication.ReadOnce(rw)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	s.Close()
+	relayStream.Close()
 
 	peerId, err := peer.Decode(string(peerIdBytes))
 	if err != nil {
 		fmt.Println("Peer not found")
-		return nil, err
+		return err
 	}
-
-	fmt.Println("reqesuted peer id", peerId)
 
 	// Creates a relay address
 	relayedAddr, err := ma.NewMultiaddr("/p2p/" + config.GetRelayID().Pretty() + "/p2p-circuit/p2p/" + peerId.Pretty())
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Since we just tried and failed to dial, the dialer system will, by default
@@ -124,34 +122,40 @@ func (localPeer *Peer) connectToPeer(publicKey string) (network.Stream, error) {
 	}
 
 	// Woohoo! we're connected!
-	s, err = localPeer.host.NewStream(context.Background(), peerId, "/hub")
+	hubStream, err := localPeer.host.NewStream(context.Background(), peerId, "/hub")
 	if err != nil {
 		fmt.Println("huh, this should have worked: ", err)
-		return nil, err
+		return err
 	}
 
-	localPeer.streams[publicKey] = s
-	return s, nil
+	go func() {
+		for {
+			resp := localPeer.ReceiveResponseFromPeer(publicKey)
+			processMessage(localPeer.grpcMsgHandler, hubStream, resp)
+			//fmt.Println("response: ", string(resp))
+		}
+	}()
+
+	localPeer.streams[publicKey] = hubStream
+	return nil
 }
 
 func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte) {
 
-	fmt.Println("This peer Id:", localPeer.host.ID())
-	s, err := localPeer.connectToPeer(publicKey)
+	err := localPeer.connectToPeer(publicKey)
 	if err != nil {
 		fmt.Println("Can't establish connection with", publicKey)
 		log.Error(err)
 		return
 	}
 
-	_, err = s.Write(msg)
+	_, err = localPeer.streams[publicKey].Write(msg)
 	if err != nil {
 		panic(err)
 	}
 }
 
 func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) []byte {
-	fmt.Println("reading response from peer")
 	s, ok := localPeer.streams[publicKey]
 	if !ok {
 		fmt.Println("Connection not found with", publicKey)
@@ -172,8 +176,9 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) []byte {
 	return msg
 }
 
-func (localPeer *Peer) SetMsgHandler(callback func(msg []byte)) {
-	localPeer.host.SetStreamHandler("/hub", hubMsgHandler(callback))
+func (localPeer *Peer) SetStreamHandler(callback func(msg []byte)) {
+	localPeer.grpcMsgHandler = callback
+	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(callback))
 }
 
 func (localPeer *Peer) GetId() []byte {
