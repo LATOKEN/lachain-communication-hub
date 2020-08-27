@@ -151,7 +151,9 @@ func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte) {
 
 	_, err = localPeer.streams[publicKey].Write(msg)
 	if err != nil {
-		panic(err)
+		localPeer.removeFromConected(publicKey)
+		return
+		//panic(err)
 	}
 	fmt.Println("msg sent")
 }
