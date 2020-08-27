@@ -71,7 +71,7 @@ func (s *server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 			return err
 		}
 
-		fmt.Println("Sending message to peer", hex.EncodeToString(req.PublicKey))
+		fmt.Println("Sending message to peer", hex.EncodeToString(req.PublicKey), "message length", len(req.Data))
 		s.peer.SendMessageToPeer(hex.EncodeToString(req.PublicKey), req.Data)
 	}
 }
