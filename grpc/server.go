@@ -68,8 +68,7 @@ func (s *server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 			return err
 		}
 		if err != nil {
-			panic(err)
-			return nil
+			return err
 		}
 
 		fmt.Println("Sending message to peer", hex.EncodeToString(req.PublicKey))
