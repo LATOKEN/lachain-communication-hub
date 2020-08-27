@@ -118,7 +118,7 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 		Addrs: []ma.Multiaddr{relayedAddr},
 	}
 	if err := localPeer.host.Connect(context.Background(), relayedPeerInfo); err != nil {
-		panic(err)
+		return err
 	}
 
 	// Woohoo! we're connected!
