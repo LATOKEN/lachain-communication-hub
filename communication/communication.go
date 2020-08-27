@@ -3,11 +3,18 @@ package communication
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 )
 
 func ReadOnce(rw *bufio.ReadWriter) ([]byte, error) {
-	return ioutil.ReadAll(rw)
+	limit := rw.Available()
+	msg := make([]byte, limit)
+
+	n, err := rw.Read(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return msg[:n], nil
 }
 
 func WriteOnce(rw *bufio.ReadWriter, msg []byte) {

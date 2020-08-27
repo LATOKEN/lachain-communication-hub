@@ -51,20 +51,18 @@ func TestCommunication(t *testing.T) {
 		}
 	}()
 
-	go func() {
-		for {
-			resp, err := stream.Recv()
-			if err == io.EOF {
-				fmt.Println("EOF")
-				return
-			}
-			if err != nil {
-				log.Fatalf("can not receive %v", err)
-			}
-			log.Println("received grpc message:", string(resp.Data))
-			os.Exit(1)
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			fmt.Println("EOF")
+			return
 		}
-	}()
+		if err != nil {
+			log.Fatalf("can not receive %v", err)
+		}
+		log.Println("received grpc message:", string(resp.Data))
+		os.Exit(1)
+	}
 }
 
 func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, []byte, peer.Peer) {
@@ -81,13 +79,13 @@ func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, [
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	getKeyResult, err := c.GetKey(ctx, &pb.GetHubIdRequest{})
 	if err != nil {
-		log.Fatalf("could not: %v", err)
+		log.Fatalf("could not GetKey: %v", err)
 	}
 	cancel()
 
 	prv, err := crypto.GenerateKey()
 	if err != nil {
-		log.Fatalf("could not: %v", err)
+		log.Fatalf("could not GenerateKey: %v", err)
 	}
 	pub := crypto.CompressPubkey(&prv.PublicKey)
 
@@ -98,12 +96,13 @@ func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, [
 		panic(err)
 	}
 
-	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+
 	initR, err := c.Init(ctx, &pb.InitRequest{
 		Signature: signature,
 	})
 	if err != nil {
-		log.Fatalf("could not: %v", err)
+		log.Fatalf("could not Init: %v", err)
 	}
 	cancel()
 

@@ -11,6 +11,7 @@ import (
 	"lachain-communication-hub/storage"
 	"lachain-communication-hub/types"
 	"lachain-communication-hub/utils"
+	"log"
 
 	"github.com/libp2p/go-libp2p-core/peer"
 )
@@ -34,6 +35,8 @@ func Run() {
 
 func handleGetPeerAddr(s network.Stream) {
 
+	log.Println("handleGetPeerAddr")
+
 	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
 
 	publicKey, err := communication.ReadOnce(rw)
@@ -46,12 +49,21 @@ func handleGetPeerAddr(s network.Stream) {
 	}
 
 	if peerId, err := storage.GetPeerIdByPublicKey(string(publicKey)); err != nil {
-		communication.WriteOnce(rw, []byte("0"))
+		log.Println("Peer not found with public key:", string(publicKey))
+		_, err = s.Write([]byte("0"))
+		if err != nil {
+			return
+		}
 	} else {
-		communication.WriteOnce(rw, []byte(peerId.Pretty()))
+		log.Println("Found peer with public key:", string(publicKey))
+		_, err = s.Write([]byte(peerId.Pretty()))
+		if err != nil {
+			return
+		}
 	}
 
 	s.Close()
+	log.Println("closing getPeerAddr stream")
 }
 
 func handleRegister(s network.Stream) {

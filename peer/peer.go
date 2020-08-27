@@ -62,7 +62,7 @@ func (localPeer *Peer) register(signature []byte) {
 		panic(err)
 	}
 
-	confirmHandle(s)
+	//confirmHandle(s)
 
 	s.Close()
 }
@@ -72,6 +72,8 @@ func (localPeer *Peer) Register(signature []byte) {
 }
 
 func (localPeer *Peer) connectToPeer(publicKey string) error {
+	fmt.Println("connecting")
+
 	if _, ok := localPeer.streams[publicKey]; ok {
 		return nil
 	}
@@ -89,6 +91,7 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 	rw := bufio.NewReadWriter(bufio.NewReader(relayStream), bufio.NewWriter(relayStream))
 
 	peerIdBytes, err := communication.ReadOnce(rw)
+	fmt.Println("connecting2")
 	if err != nil {
 		return err
 	}
@@ -153,6 +156,7 @@ func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte) {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("msg sent")
 }
 
 func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) []byte {

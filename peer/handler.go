@@ -65,5 +65,4 @@ func confirmHandle(s network.Stream) {
 	if err != io.EOF {
 		panic(err)
 	}
-
 }
