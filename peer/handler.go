@@ -38,7 +38,7 @@ func runHubMsgHandler(rw *bufio.ReadWriter, onMsg func(msg []byte), s network.St
 func processMessage(onMsg func([]byte), s network.Stream, msg []byte) {
 	onMsg(msg)
 
-	log.Println("received msg from peer:", s.Conn().RemotePeer(), "msg:", string(msg))
+	log.Println("received msg from peer:", s.Conn().RemotePeer(), "msg len:", len(msg))
 
 	switch string(msg) {
 	case "ping":
