@@ -1,10 +1,7 @@
 package relay
 
 import (
-	"bufio"
-	"encoding/hex"
 	"fmt"
-	crypto3 "github.com/ethereum/go-ethereum/crypto"
 	"github.com/libp2p/go-libp2p-core/network"
 	"lachain-communication-hub/communication"
 	"lachain-communication-hub/host"
@@ -35,11 +32,7 @@ func Run() {
 
 func handleGetPeerAddr(s network.Stream) {
 
-	log.Println("handleGetPeerAddr")
-
-	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-
-	publicKey, err := communication.ReadOnce(rw)
+	publicKey, err := communication.ReadOnce(s)
 	if err != nil {
 		if err.Error() == "stream reset" {
 			fmt.Println("Connection closed by peer")
@@ -49,30 +42,27 @@ func handleGetPeerAddr(s network.Stream) {
 	}
 
 	if peerId, err := storage.GetPeerIdByPublicKey(string(publicKey)); err != nil {
-		log.Println("Peer not found with public key:", string(publicKey))
-		_, err = s.Write([]byte("0"))
+		log.Println("Peer not found with public key:", string(publicKey), err)
+		err = communication.Write(s, []byte("0"))
 		if err != nil {
 			return
 		}
 	} else {
 		log.Println("Found peer with public key:", string(publicKey))
-		_, err = s.Write([]byte(peerId.Pretty()))
+		err = communication.Write(s, []byte(peerId.Pretty()))
 		if err != nil {
 			return
 		}
 	}
 
 	s.Close()
-	log.Println("closing getPeerAddr stream")
 }
 
 func handleRegister(s network.Stream) {
 
-	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-
 	peerId, err := s.Conn().RemotePeer().Marshal()
 
-	signature, err := communication.ReadOnce(rw)
+	signature, err := communication.ReadOnce(s)
 	if err != nil {
 		if err.Error() == "stream reset" {
 			fmt.Println("Connection closed by peer")
@@ -83,15 +73,17 @@ func handleRegister(s network.Stream) {
 
 	publicKey, err := utils.EcRecover(peerId, signature)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return
 	}
 
-	pubHex := hex.EncodeToString(crypto3.CompressPubkey(publicKey))
+	storage.RegisterPeer(utils.PublicKeyToHexString(publicKey), s.Conn().RemotePeer().Pretty())
 
-	fmt.Printf("Peer registration, id: %s, pubKey: %s\n", s.Conn().RemotePeer().Pretty(), pubHex)
-
-	storage.RegisterPeer(pubHex, s.Conn().RemotePeer().Pretty())
+	err = communication.Write(s, []byte("1"))
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
 	s.Close()
 }

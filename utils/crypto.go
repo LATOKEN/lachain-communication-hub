@@ -2,6 +2,7 @@ package utils
 
 import (
 	"crypto/ecdsa"
+	"encoding/hex"
 	"fmt"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -37,4 +38,9 @@ func EcRecover(data, sig []byte) (*ecdsa.PublicKey, error) {
 	pub, err := crypto.UnmarshalPubkey(rpk)
 
 	return pub, nil
+}
+
+func PublicKeyToHexString(publicKey *ecdsa.PublicKey) string {
+
+	return hex.EncodeToString(crypto.CompressPubkey(publicKey))
 }

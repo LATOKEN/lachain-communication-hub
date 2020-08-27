@@ -1,20 +1,20 @@
 package peer
 
 import (
-	"bufio"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	swarm "github.com/libp2p/go-libp2p-swarm"
 	ma "github.com/multiformats/go-multiaddr"
-	"github.com/opentracing/opentracing-go/log"
 	"lachain-communication-hub/communication"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/types"
+	"log"
 )
 
 type Peer struct {
@@ -22,6 +22,8 @@ type Peer struct {
 	streams        map[string]network.Stream
 	grpcMsgHandler func([]byte)
 }
+
+func GRPCHandlerMock(msg []byte) {}
 
 func New(id string) Peer {
 	localHost := host.BuildNamedHost(types.Peer, id)
@@ -37,11 +39,7 @@ func New(id string) Peer {
 	}
 	localPeer := Peer{localHost, make(map[string]network.Stream), nil}
 
-	defaultMsgHandler := func(msg []byte) {
-		fmt.Println(localPeer.host.ID(), "Here is should be grpc callback with msg:", string(msg))
-	}
-
-	localPeer.SetStreamHandler(defaultMsgHandler)
+	localPeer.SetStreamHandler(GRPCHandlerMock)
 
 	return localPeer
 }
@@ -57,12 +55,19 @@ func (localPeer *Peer) register(signature []byte) {
 	fmt.Println("signature", hex.EncodeToString(signature))
 	fmt.Println("peerId", localPeer.host.ID())
 
-	_, err = s.Write(signature)
+	err = communication.Write(s, signature)
 	if err != nil {
-		panic(err)
+		log.Fatal("cannot register", err)
 	}
 
-	//confirmHandle(s)
+	resp, err := communication.ReadOnce(s)
+	if err != nil {
+		log.Fatal("cannot register", err)
+	}
+
+	if string(resp) != "1" {
+		log.Fatal("cannot register", string(resp))
+	}
 
 	s.Close()
 }
@@ -81,14 +86,12 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 		return err
 	}
 
-	_, err = relayStream.Write([]byte(publicKey))
+	err = communication.Write(relayStream, []byte(publicKey))
 	if err != nil {
 		return err
 	}
 
-	rw := bufio.NewReadWriter(bufio.NewReader(relayStream), bufio.NewWriter(relayStream))
-
-	peerIdBytes, err := communication.ReadOnce(rw)
+	peerIdBytes, err := communication.ReadOnce(relayStream)
 	if err != nil {
 		return err
 	}
@@ -130,7 +133,11 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 
 	go func() {
 		for {
-			resp := localPeer.ReceiveResponseFromPeer(publicKey)
+			resp, err := localPeer.ReceiveResponseFromPeer(publicKey)
+			if err != nil {
+				localPeer.removeFromConected(publicKey)
+				return
+			}
 			processMessage(localPeer.grpcMsgHandler, hubStream, resp)
 			//fmt.Println("response: ", string(resp))
 		}
@@ -144,39 +151,36 @@ func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte) {
 
 	err := localPeer.connectToPeer(publicKey)
 	if err != nil {
-		fmt.Println("Can't establish connection with", publicKey)
-		log.Error(err)
+		log.Println("Can't establish connection with", publicKey)
+		log.Println(err)
 		return
 	}
 
-	_, err = localPeer.streams[publicKey].Write(msg)
+	err = communication.Write(localPeer.streams[publicKey], msg)
 	if err != nil {
+		log.Printf("Cant connect to peer %s. Removing from connected", publicKey)
 		localPeer.removeFromConected(publicKey)
 		return
-		//panic(err)
 	}
-	fmt.Println("msg sent")
 }
 
-func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) []byte {
+func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) ([]byte, error) {
 	s, ok := localPeer.streams[publicKey]
 	if !ok {
 		fmt.Println("Connection not found with", publicKey)
-		return nil
+		return nil, errors.New("not found")
 	}
 
-	rw := bufio.NewReadWriter(bufio.NewReader(s), bufio.NewWriter(s))
-
-	msg, err := communication.ReadOnce(rw)
+	msg, err := communication.ReadOnce(s)
 	if err != nil {
 		if err.Error() == "stream reset" {
-			fmt.Println("Connection closed by peer")
+			log.Println("Connection closed by peer")
 			localPeer.removeFromConected(publicKey)
-			return nil
+			return nil, errors.New("conn reset")
 		}
-		panic(err)
+		return nil, err
 	}
-	return msg
+	return msg, nil
 }
 
 func (localPeer *Peer) SetStreamHandler(callback func(msg []byte)) {
@@ -190,11 +194,6 @@ func (localPeer *Peer) GetId() []byte {
 		panic(err)
 	}
 	return id
-}
-
-func (localPeer *Peer) RequestDataFromPeer(publicKey string, data []byte) []byte {
-	localPeer.SendMessageToPeer(publicKey, data)
-	return localPeer.ReceiveResponseFromPeer(publicKey)
 }
 
 func (localPeer *Peer) removeFromConected(publicKey string) {

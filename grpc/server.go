@@ -41,10 +41,19 @@ func (s *server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 	ctx := stream.Context()
 
 	onMsg := func(msg []byte) {
+		select {
+		case <-ctx.Done():
+			log.Println("Unable to send msg via rpc")
+			s.peer.SetStreamHandler(peer.GRPCHandlerMock)
+			return
+		default:
+		}
+
 		log.Println("Received msg, sending via rpc to client")
 		resp := pb.OutboundMessage{Data: msg}
 		if err := stream.Send(&resp); err != nil {
-			log.Printf("send error %v", err)
+			log.Println("Unable to send msg via rpc")
+			s.peer.SetStreamHandler(peer.GRPCHandlerMock)
 		}
 	}
 
@@ -72,6 +81,7 @@ func (s *server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 		}
 
 		fmt.Println("Sending message to peer", hex.EncodeToString(req.PublicKey), "message length", len(req.Data))
+
 		s.peer.SendMessageToPeer(hex.EncodeToString(req.PublicKey), req.Data)
 	}
 }
