@@ -3,6 +3,7 @@ package utils
 import (
 	"encoding/hex"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -16,7 +17,7 @@ func TestSign(t *testing.T) {
 
 	data := []byte("some data")
 
-	signature, err := utils.LaSign(data, prv)
+	signature, err := LaSign(data, prv)
 	if err != nil {
 		panic(err)
 	}
@@ -25,7 +26,7 @@ func TestSign(t *testing.T) {
 		hex.EncodeToString(signature),
 		"ed3e192cccda310293c5f968930bf859a9205a08533785ec53229cbb0ce30f3a62597a50ed68f6b1f80e47752a01f831324575f8e8e1114eaf2af7ee785b96ac75")
 
-	recovered, err := utils.EcRecover(data, signature)
+	recovered, err := EcRecover(data, signature)
 	if err != nil {
 		panic(err)
 	}

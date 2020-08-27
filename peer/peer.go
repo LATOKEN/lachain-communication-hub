@@ -138,7 +138,7 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 				localPeer.removeFromConected(publicKey)
 				return
 			}
-			processMessage(localPeer.grpcMsgHandler, hubStream, resp)
+			processMessage(localPeer, hubStream, resp)
 			//fmt.Println("response: ", string(resp))
 		}
 	}()
@@ -185,7 +185,7 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) ([]byte, error)
 
 func (localPeer *Peer) SetStreamHandler(callback func(msg []byte)) {
 	localPeer.grpcMsgHandler = callback
-	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(callback))
+	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(localPeer))
 }
 
 func (localPeer *Peer) GetId() []byte {

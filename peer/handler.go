@@ -8,13 +8,13 @@ import (
 	"time"
 )
 
-func incomingConnectionEstablishmentHandler(onMsg func(msg []byte)) func(s network.Stream) {
+func incomingConnectionEstablishmentHandler(peer *Peer) func(s network.Stream) {
 	return func(s network.Stream) {
-		go runHubMsgHandler(onMsg, s)
+		go runHubMsgHandler(peer, s)
 	}
 }
 
-func runHubMsgHandler(onMsg func(msg []byte), s network.Stream) {
+func runHubMsgHandler(peer *Peer, s network.Stream) {
 	for {
 		msg, err := communication.ReadOnce(s)
 		if err != nil {
@@ -28,7 +28,7 @@ func runHubMsgHandler(onMsg func(msg []byte), s network.Stream) {
 			s.Close()
 			break
 		}
-		err = processMessage(onMsg, s, msg)
+		err = processMessage(peer, s, msg)
 		if err != nil {
 			log.Println("Connection problem")
 			s.Close()
@@ -37,13 +37,14 @@ func runHubMsgHandler(onMsg func(msg []byte), s network.Stream) {
 	}
 }
 
-func processMessage(onMsg func([]byte), s network.Stream, msg []byte) error {
+func processMessage(localPeer *Peer, s network.Stream, msg []byte) error {
 	if len(msg) == 0 {
 		return nil
 	}
-	onMsg(msg)
 
-	log.Println("received msg from peer:", s.Conn().RemotePeer(), "msg:", string(msg))
+	localPeer.grpcMsgHandler(msg)
+
+	log.Println("received msg from peer:", s.Conn().RemotePeer())
 
 	switch string(msg) {
 	case "ping":
