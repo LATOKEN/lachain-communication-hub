@@ -13,19 +13,19 @@ import (
 	pb "lachain-communication-hub/grpc/protobuf"
 )
 
-type server struct {
+type Server struct {
 	pb.UnimplementedCommunicationHubServer
 	peer *peer.Peer
 }
 
-func (s *server) GetKey(ctx context.Context, in *pb.GetHubIdRequest) (*pb.GetHubIdReply, error) {
+func (s *Server) GetKey(ctx context.Context, in *pb.GetHubIdRequest) (*pb.GetHubIdReply, error) {
 	log.Printf("Received: Get Key Request")
 	return &pb.GetHubIdReply{
 		Id: s.peer.GetId(),
 	}, nil
 }
 
-func (s *server) Init(ctx context.Context, in *pb.InitRequest) (*pb.InitReply, error) {
+func (s *Server) Init(ctx context.Context, in *pb.InitRequest) (*pb.InitReply, error) {
 	log.Printf("Received: Init Request")
 	s.peer.Register(in.GetSignature())
 	return &pb.InitReply{
@@ -34,7 +34,7 @@ func (s *server) Init(ctx context.Context, in *pb.InitRequest) (*pb.InitReply, e
 	}, nil
 }
 
-func (s *server) Communicate(stream pb.CommunicationHub_CommunicateServer) error {
+func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error {
 
 	log.Println("Started new communication server")
 
@@ -93,14 +93,14 @@ func runServer(s *grpc.Server, lis net.Listener) {
 	}
 }
 
-func New(port string, localPeer *peer.Peer) *server {
+func New(port string, localPeer *peer.Peer) *Server {
 	p := localPeer
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	server := &server{peer: p}
+	server := &Server{peer: p}
 	pb.RegisterCommunicationHubServer(s, server)
 	go runServer(s, lis)
 	return server
