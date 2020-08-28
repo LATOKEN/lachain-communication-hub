@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/libp2p/go-libp2p"
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	core "github.com/libp2p/go-libp2p-core"
@@ -83,7 +84,15 @@ func BuildNamedHost(typ int, postfix string) core.Host {
 
 	switch typ {
 	case types.Peer:
-		host, err := libp2p.New(context.Background(), libp2p.ListenAddrs(), prvKeyOpt)
+		externalIP := conf.GetP2PExternalIP()
+		if externalIP == "" {
+			log.Warn("External IP not defined, Peers might not be able to resolve this node if behind NAT")
+		}
+		host, err := libp2p.New(
+			context.Background(),
+			libp2p.ListenAddrs(),
+			prvKeyOpt,
+		)
 		if err != nil {
 			panic(err)
 		}

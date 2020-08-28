@@ -3,6 +3,7 @@ package relay
 import (
 	"fmt"
 	"github.com/libp2p/go-libp2p-core/network"
+	ma "github.com/multiformats/go-multiaddr"
 	"lachain-communication-hub/communication"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/storage"
@@ -36,22 +37,57 @@ func handleGetPeerAddr(s network.Stream) {
 	if err != nil {
 		if err.Error() == "stream reset" {
 			fmt.Println("Connection closed by peer")
+			s.Close()
 			return
 		}
 		panic(err)
 	}
 
 	if peerId, err := storage.GetPeerIdByPublicKey(string(publicKey)); err != nil {
-		log.Println("Peer not found with public key:", string(publicKey), err)
+		log.Println("Peer id not found with public key:", string(publicKey), err)
 		err = communication.Write(s, []byte("0"))
 		if err != nil {
-			return
+			if err.Error() == "stream reset" {
+				s.Close()
+				fmt.Println("Connection closed by peer")
+				return
+			}
+			panic(err)
 		}
 	} else {
-		log.Println("Found peer with public key:", string(publicKey))
+		log.Println("Found peer id with public key:", string(publicKey))
 		err = communication.Write(s, []byte(peerId.Pretty()))
 		if err != nil {
-			return
+			if err.Error() == "stream reset" {
+				s.Close()
+				fmt.Println("Connection closed by peer")
+				return
+			}
+			panic(err)
+		}
+	}
+
+	if peerAddr := storage.GetPeerAddrByPublicKey(string(publicKey)); peerAddr == nil {
+		log.Println("Peer addr not found with public key:", string(publicKey))
+		err = communication.Write(s, []byte("0"))
+		if err != nil {
+			if err.Error() == "stream reset" {
+				s.Close()
+				fmt.Println("Connection closed by peer")
+				return
+			}
+			panic(err)
+		}
+	} else {
+		log.Println("Found peer addr with public key:", string(publicKey))
+		err = communication.Write(s, peerAddr.Bytes())
+		if err != nil {
+			if err.Error() == "stream reset" {
+				s.Close()
+				fmt.Println("Connection closed by peer")
+				return
+			}
+			panic(err)
 		}
 	}
 
@@ -66,6 +102,7 @@ func handleRegister(s network.Stream) {
 	if err != nil {
 		if err.Error() == "stream reset" {
 			fmt.Println("Connection closed by peer")
+			s.Close()
 			return
 		}
 		panic(err)
@@ -74,16 +111,28 @@ func handleRegister(s network.Stream) {
 	publicKey, err := utils.EcRecover(peerId, signature)
 	if err != nil {
 		log.Println(err)
+		s.Close()
 		return
 	}
 
-	storage.RegisterPeer(utils.PublicKeyToHexString(publicKey), s.Conn().RemotePeer().Pretty())
+	mAddrBytes, err := communication.ReadOnce(s)
+	if err != nil {
+		if err.Error() == "stream reset" {
+			fmt.Println("Connection closed by peer")
+			s.Close()
+			return
+		}
+		panic(err)
+	}
+
+	mAddr, _ := ma.NewMultiaddrBytes(mAddrBytes)
+
+	storage.RegisterPeer(utils.PublicKeyToHexString(publicKey), s.Conn().RemotePeer().Pretty(), mAddr)
 
 	err = communication.Write(s, []byte("1"))
 	if err != nil {
 		log.Println(err)
 		return
 	}
-
 	s.Close()
 }

@@ -15,6 +15,7 @@ import (
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/types"
 	"log"
+	"strings"
 )
 
 type Peer struct {
@@ -23,7 +24,7 @@ type Peer struct {
 	grpcMsgHandler func([]byte)
 }
 
-func GRPCHandlerMock(msg []byte) {}
+func GRPCHandlerMock([]byte) {}
 
 func New(id string) Peer {
 	localHost := host.BuildNamedHost(types.Peer, id)
@@ -60,6 +61,20 @@ func (localPeer *Peer) register(signature []byte) {
 		log.Fatal("cannot register", err)
 	}
 
+	extAddr, err := localPeer.GetExternalMultiAddress()
+	if err != nil {
+		err = communication.Write(s, []byte("0"))
+		if err != nil {
+			log.Fatal("cannot register", err)
+		}
+	} else {
+		extAddrBytes := extAddr.Bytes()
+		err = communication.Write(s, extAddrBytes)
+		if err != nil {
+			log.Fatal("cannot register", err)
+		}
+	}
+
 	resp, err := communication.ReadOnce(s)
 	if err != nil {
 		log.Fatal("cannot register", err)
@@ -88,11 +103,19 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 
 	err = communication.Write(relayStream, []byte(publicKey))
 	if err != nil {
+		relayStream.Close()
 		return err
 	}
 
 	peerIdBytes, err := communication.ReadOnce(relayStream)
 	if err != nil {
+		relayStream.Close()
+		return err
+	}
+
+	peerAddrBytes, err := communication.ReadOnce(relayStream)
+	if err != nil {
+		relayStream.Close()
 		return err
 	}
 
@@ -104,10 +127,14 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 		return err
 	}
 
-	// Creates a relay address
-	relayedAddr, err := ma.NewMultiaddr("/p2p/" + config.GetRelayID().Pretty() + "/p2p-circuit/p2p/" + peerId.Pretty())
-	if err != nil {
-		return err
+	peerAddr, _ := ma.NewMultiaddrBytes(peerAddrBytes)
+
+	if peerAddr == nil {
+		// Creates a relay address
+		peerAddr, err = ma.NewMultiaddr("/p2p/" + config.GetRelayID().Pretty() + "/p2p-circuit/p2p/" + peerId.Pretty())
+		if err != nil {
+			return err
+		}
 	}
 
 	// Since we just tried and failed to dial, the dialer system will, by default
@@ -118,7 +145,7 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 
 	relayedPeerInfo := peer.AddrInfo{
 		ID:    peerId,
-		Addrs: []ma.Multiaddr{relayedAddr},
+		Addrs: []ma.Multiaddr{peerAddr},
 	}
 	if err := localPeer.host.Connect(context.Background(), relayedPeerInfo); err != nil {
 		return err
@@ -135,11 +162,14 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 		for {
 			resp, err := localPeer.ReceiveResponseFromPeer(publicKey)
 			if err != nil {
-				localPeer.removeFromConected(publicKey)
+				localPeer.removeFromConnected(publicKey)
 				return
 			}
-			processMessage(localPeer, hubStream, resp)
-			//fmt.Println("response: ", string(resp))
+			err = processMessage(localPeer, hubStream, resp)
+			if err != nil {
+				localPeer.removeFromConnected(publicKey)
+				return
+			}
 		}
 	}()
 
@@ -159,7 +189,7 @@ func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte) {
 	err = communication.Write(localPeer.streams[publicKey], msg)
 	if err != nil {
 		log.Printf("Cant connect to peer %s. Removing from connected", publicKey)
-		localPeer.removeFromConected(publicKey)
+		localPeer.removeFromConnected(publicKey)
 		return
 	}
 }
@@ -175,7 +205,7 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) ([]byte, error)
 	if err != nil {
 		if err.Error() == "stream reset" {
 			log.Println("Connection closed by peer")
-			localPeer.removeFromConected(publicKey)
+			localPeer.removeFromConnected(publicKey)
 			return nil, errors.New("conn reset")
 		}
 		return nil, err
@@ -196,8 +226,25 @@ func (localPeer *Peer) GetId() []byte {
 	return id
 }
 
-func (localPeer *Peer) removeFromConected(publicKey string) {
-	if _, ok := localPeer.streams[publicKey]; ok {
+func (localPeer *Peer) removeFromConnected(publicKey string) {
+	if s, ok := localPeer.streams[publicKey]; ok {
+		localPeer.host.Network().ClosePeer(s.Conn().RemotePeer())
+		s.Close()
 		delete(localPeer.streams, publicKey)
 	}
+}
+
+func (localPeer *Peer) GetExternalMultiAddress() (ma.Multiaddr, error) {
+	extIp := config.GetP2PExternalIP()
+	if extIp == "" {
+		return nil, errors.New("not found")
+	}
+	addresses := localPeer.host.Network().Peerstore().Addrs(localPeer.host.ID())
+
+	for _, addr := range addresses {
+		if strings.Contains(addr.String(), extIp) {
+			return addr, nil
+		}
+	}
+	return nil, errors.New("not found")
 }
