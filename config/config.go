@@ -6,7 +6,7 @@ import (
 	"lachain-communication-hub/utils"
 )
 
-const RelayAddr = "/ip4/95.217.215.141/tcp/37646"
+const RelayAddr = "/ip4/95.217.215.141/tcp/37645"
 const GRPCPort = ":50001"
 
 var ipLookup = true
