@@ -83,7 +83,7 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 			return err
 		}
 
-		log.Tracef("Sending message to peer", hex.EncodeToString(req.PublicKey), "message length", len(req.Data))
+		log.Tracef("Sending message to peer %s message length %s", hex.EncodeToString(req.PublicKey), len(req.Data))
 		s.peer.SendMessageToPeer(hex.EncodeToString(req.PublicKey), req.Data)
 	}
 }
