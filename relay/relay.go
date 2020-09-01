@@ -99,7 +99,7 @@ func handleGetPeerPublicKeyById(s network.Stream) {
 	peerIdBinary, err := communication.ReadOnce(s)
 	if err != nil {
 		if err.Error() == "stream reset" {
-			fmt.Println("Connection closed by peer")
+			log.Errorf("Connection closed by peer")
 			s.Close()
 			return
 		}
@@ -113,23 +113,23 @@ func handleGetPeerPublicKeyById(s network.Stream) {
 	}
 
 	if publicKey := storage.GetPeerPublicKeyById(peerId); publicKey == "" {
-		log.Println("Peer pub key not found with peerId:", peerId.Pretty())
+		log.Debugf("Peer pub key not found with peerId:", peerId.Pretty())
 		err = communication.Write(s, []byte("0"))
 		if err != nil {
 			if err.Error() == "stream reset" {
 				s.Close()
-				fmt.Println("Connection closed by peer")
+				log.Errorf("Connection closed by peer")
 				return
 			}
 			panic(err)
 		}
 	} else {
-		log.Println("Found peer pub key with peer id:", publicKey, peerId.Pretty())
+		log.Debugf("Found peer pub key with peer id:", publicKey, peerId.Pretty())
 		err = communication.Write(s, []byte(publicKey))
 		if err != nil {
 			if err.Error() == "stream reset" {
 				s.Close()
-				fmt.Println("Connection closed by peer")
+				log.Errorf("Connection closed by peer")
 				return
 			}
 			panic(err)

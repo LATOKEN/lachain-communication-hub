@@ -12,7 +12,6 @@ import (
 	server "lachain-communication-hub/grpc"
 	"lachain-communication-hub/peer"
 	"lachain-communication-hub/utils"
-	"os"
 	"testing"
 	"time"
 
