@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
   <metadata>
     <id>Lachain.CommunicationHub.Native</id>
-    <version>0.0.4</version>
+    <version>0.0.5</version>
     <authors>Skird</authors>
     <owners>Skird</owners>
     <license type="expression">MIT</license>
@@ -11,7 +11,7 @@
     <description>This package contains platform-specific native code builds of rust Lachain communication hub implementation. Included: linux-x64/libhub.so, osx-x64/libhub.dylib, win-x64/hub.dll</description>
   </metadata>
   <files>
-    <!--<file src="lib/win-x64/hub.dll" target="runtimes/win-x64/native/hub.dll" />-->
+    <file src="lib/win-x64/hub.dll" target="runtimes/win-x64/native/hub.dll" />
     <file src="lib/linux-x64/libhub.so" target="runtimes/linux-x64/native/libhub.so" />
     <!--<file src="lib/osx-x64/libhub.dylib" target="runtimes/osx-x64/native/libhub.dylib" />-->
     <file src="Lachain.CommunicationHub.Native.targets" target="build/netstandard1.0"/>
