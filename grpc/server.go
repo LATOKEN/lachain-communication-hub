@@ -44,7 +44,7 @@ func (s *server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 		select {
 		case <-ctx.Done():
 			log.Println("Unable to send msg via rpc")
-			s.peer.SetStreamHandler(peer.GRPCHandlerMock)
+			s.peer.SetStreamHandlerFn(peer.GRPCHandlerMock)
 			return
 		default:
 		}
@@ -53,11 +53,11 @@ func (s *server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 		resp := pb.OutboundMessage{Data: msg}
 		if err := stream.Send(&resp); err != nil {
 			log.Println("Unable to send msg via rpc")
-			s.peer.SetStreamHandler(peer.GRPCHandlerMock)
+			s.peer.SetStreamHandlerFn(peer.GRPCHandlerMock)
 		}
 	}
 
-	s.peer.SetStreamHandler(onMsg)
+	s.peer.SetStreamHandlerFn(onMsg)
 
 	for {
 

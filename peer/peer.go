@@ -40,7 +40,8 @@ func New(id string) Peer {
 	}
 	localPeer := Peer{localHost, make(map[string]network.Stream), nil}
 
-	localPeer.SetStreamHandler(GRPCHandlerMock)
+	localPeer.SetStreamHandlerFn(GRPCHandlerMock)
+	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(&localPeer))
 
 	return localPeer
 }
@@ -173,8 +174,40 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 		}
 	}()
 
-	localPeer.streams[publicKey] = hubStream
+	localPeer.RegisterConnection(publicKey, hubStream)
 	return nil
+}
+
+func (localPeer *Peer) GetPeerPublicKeyById(peerId peer.ID) (string, error) {
+	relayStream, err := localPeer.host.NewStream(context.Background(), config.GetRelayID(), "/getPeerPublicKeyById")
+	if err != nil {
+		return "", err
+	}
+
+	peerIdBinary, err := peerId.MarshalBinary()
+	if err != nil {
+		return "", err
+	}
+
+	err = communication.Write(relayStream, peerIdBinary)
+	if err != nil {
+		relayStream.Close()
+		return "", err
+	}
+
+	peerPubKeyBytes, err := communication.ReadOnce(relayStream)
+	if err != nil {
+		relayStream.Close()
+		return "", err
+	}
+
+	relayStream.Close()
+
+	return string(peerPubKeyBytes), nil
+}
+
+func (localPeer *Peer) RegisterConnection(publicKey string, stream network.Stream) {
+	localPeer.streams[publicKey] = stream
 }
 
 func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte) {
@@ -213,9 +246,8 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) ([]byte, error)
 	return msg, nil
 }
 
-func (localPeer *Peer) SetStreamHandler(callback func(msg []byte)) {
+func (localPeer *Peer) SetStreamHandlerFn(callback func(msg []byte)) {
 	localPeer.grpcMsgHandler = callback
-	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(localPeer))
 }
 
 func (localPeer *Peer) GetId() []byte {
@@ -247,4 +279,13 @@ func (localPeer *Peer) GetExternalMultiAddress() (ma.Multiaddr, error) {
 		}
 	}
 	return nil, errors.New("not found")
+}
+
+func (localPeer *Peer) IsConnectionWithPeerIdExists(peerId peer.ID) bool {
+	for _, s := range localPeer.streams {
+		if s.Conn().RemotePeer() == peerId {
+			return true
+		}
+	}
+	return false
 }

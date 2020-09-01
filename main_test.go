@@ -12,7 +12,6 @@ import (
 	"lachain-communication-hub/peer"
 	"lachain-communication-hub/utils"
 	"log"
-	"os"
 	"testing"
 	"time"
 
@@ -60,7 +59,7 @@ func TestCommunication(t *testing.T) {
 				log.Fatalf("can not receive %v", err)
 			}
 			log.Println("received grpc message:", string(resp.Data))
-			os.Exit(1)
+			stream.CloseSend()
 		}
 	}()
 

@@ -16,6 +16,18 @@ func incomingConnectionEstablishmentHandler(peer *Peer) func(s network.Stream) {
 
 func runHubMsgHandler(peer *Peer, s network.Stream) {
 	for {
+		remotePeerId := s.Conn().RemotePeer()
+		connectionExists := peer.IsConnectionWithPeerIdExists(remotePeerId)
+
+		if !connectionExists {
+			publicKey, err := peer.GetPeerPublicKeyById(remotePeerId)
+			if err != nil {
+				s.Close()
+				break
+			}
+			peer.RegisterConnection(publicKey, s)
+		}
+
 		msg, err := communication.ReadOnce(s)
 		if err != nil {
 			if err == io.EOF {
@@ -63,13 +75,4 @@ func processMessage(localPeer *Peer, s network.Stream, msg []byte) error {
 		//	break
 	}
 	return nil
-}
-
-func confirmHandle(s network.Stream) {
-	// read some to invoke handler // libp2p, wtf??
-	data := make([]byte, 1)
-	_, err := s.Read(data)
-	if err != io.EOF {
-		panic(err)
-	}
 }

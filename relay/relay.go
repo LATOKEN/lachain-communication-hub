@@ -25,6 +25,7 @@ func Run() {
 	}
 
 	relayHost.SetStreamHandler("/getPeerAddr", handleGetPeerAddr)
+	relayHost.SetStreamHandler("/getPeerPublicKeyById", handleGetPeerPublicKeyById)
 	relayHost.SetStreamHandler("/register", handleRegister)
 
 	fmt.Println("Listening on")
@@ -94,6 +95,51 @@ func handleGetPeerAddr(s network.Stream) {
 	s.Close()
 }
 
+func handleGetPeerPublicKeyById(s network.Stream) {
+
+	peerIdBinary, err := communication.ReadOnce(s)
+	if err != nil {
+		if err.Error() == "stream reset" {
+			fmt.Println("Connection closed by peer")
+			s.Close()
+			return
+		}
+		panic(err)
+	}
+
+	peerId, err := peer.IDFromBytes(peerIdBinary)
+	if err != nil {
+		s.Close()
+		return
+	}
+
+	if publicKey := storage.GetPeerPublicKeyById(peerId); publicKey == "" {
+		log.Println("Peer pub key not found with peerId:", peerId.Pretty())
+		err = communication.Write(s, []byte("0"))
+		if err != nil {
+			if err.Error() == "stream reset" {
+				s.Close()
+				fmt.Println("Connection closed by peer")
+				return
+			}
+			panic(err)
+		}
+	} else {
+		log.Println("Found peer pub key with peer id:", publicKey, peerId.Pretty())
+		err = communication.Write(s, []byte(publicKey))
+		if err != nil {
+			if err.Error() == "stream reset" {
+				s.Close()
+				fmt.Println("Connection closed by peer")
+				return
+			}
+			panic(err)
+		}
+	}
+
+	s.Close()
+}
+
 func handleRegister(s network.Stream) {
 
 	peerId, err := s.Conn().RemotePeer().Marshal()
@@ -127,7 +173,7 @@ func handleRegister(s network.Stream) {
 
 	mAddr, _ := ma.NewMultiaddrBytes(mAddrBytes)
 
-	storage.RegisterPeer(utils.PublicKeyToHexString(publicKey), s.Conn().RemotePeer().Pretty(), mAddr)
+	storage.RegisterPeer(utils.PublicKeyToHexString(publicKey), s.Conn().RemotePeer(), mAddr)
 
 	err = communication.Write(s, []byte("1"))
 	if err != nil {
