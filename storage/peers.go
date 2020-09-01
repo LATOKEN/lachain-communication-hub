@@ -26,6 +26,12 @@ func GetPeerIdByPublicKey(publicKey string) (peer.ID, error) {
 	return "", errors.New("not found")
 }
 
+func GetPeerPublicKeyById(peerId peer.ID) string {
+	mutex.Lock()
+	defer mutex.Unlock()
+	return getPubKeyById(peerId)
+}
+
 func GetPeerAddrByPublicKey(publicKey string) multiaddr.Multiaddr {
 	mutex.Lock()
 	defer mutex.Unlock()
@@ -35,10 +41,20 @@ func GetPeerAddrByPublicKey(publicKey string) multiaddr.Multiaddr {
 	return nil
 }
 
-func RegisterPeer(publicKey string, peerId string, publicAddr multiaddr.Multiaddr) {
+func RegisterPeer(publicKey string, peerId peer.ID, publicAddr multiaddr.Multiaddr) {
 	mutex.Lock()
 	defer mutex.Unlock()
-	peerIds[publicKey] = peerId
+	peerIds[publicKey] = peerId.Pretty()
 	peerPublicAddresses[publicKey] = publicAddr
 	log.Printf("peer successfully registered:  %s, %s, %s", publicKey, peerId, publicAddr)
+}
+
+func getPubKeyById(peerId peer.ID) string {
+	for pub, idStr := range peerIds {
+		id, _ := peer.Decode(idStr)
+		if id == peerId {
+			return pub
+		}
+	}
+	return ""
 }

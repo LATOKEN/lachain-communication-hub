@@ -62,7 +62,7 @@ func TestCommunication(t *testing.T) {
 				log.Errorf("can not receive %v", err)
 			}
 			log.Tracef("received grpc message: %s", string(resp.Data))
-			os.Exit(1)
+			stream.CloseSend()
 		}
 	}()
 
