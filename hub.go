@@ -22,6 +22,11 @@ func main() {
 		if os.Args[1] == "-relay" {
 			relay.Run()
 		}
+		if os.Args[1] == "-nolookup" {
+			config.DisableIpLookup()
+			localPeer := peer.New("_h1")
+			server.New(config.GRPCPort, &localPeer)
+		}
 	}
 
 	// wait for a SIGINT or SIGTERM signal

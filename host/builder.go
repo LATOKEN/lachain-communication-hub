@@ -16,7 +16,6 @@ import (
 	"os"
 )
 
-
 var prvPathPrefix = "./prv"
 var log = loggo.GetLogger("builder")
 
@@ -85,7 +84,15 @@ func BuildNamedHost(typ int, postfix string) core.Host {
 
 	switch typ {
 	case types.Peer:
-		host, err := libp2p.New(context.Background(), libp2p.ListenAddrs(), prvKeyOpt)
+		externalIP := conf.GetP2PExternalIP()
+		if externalIP == "" {
+			log.Warningf("External IP not defined, Peers might not be able to resolve this node if behind NAT")
+		}
+		host, err := libp2p.New(
+			context.Background(),
+			libp2p.ListenAddrs(),
+			prvKeyOpt,
+		)
 		if err != nil {
 			panic(err)
 		}
