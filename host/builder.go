@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
+	"github.com/juju/loggo"
 	"github.com/libp2p/go-libp2p"
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	core "github.com/libp2p/go-libp2p-core"
@@ -16,13 +16,15 @@ import (
 	"os"
 )
 
+
 var prvPathPrefix = "./prv"
+var log = loggo.GetLogger("builder")
 
 func GetPrivateKeyForHost(postfix string) crypto.PrivKey {
 	var prv crypto.PrivKey
 	prvPath := prvPathPrefix + postfix + ".txt"
 	if _, err := os.Stat(prvPath); os.IsNotExist(err) {
-		fmt.Println("Generating private key")
+		log.Debugf("Generating private key")
 		prv, _, err = crypto.GenerateECDSAKeyPair(rand.Reader)
 		if err != nil {
 			panic(err)
@@ -44,7 +46,7 @@ func GetPrivateKeyForHost(postfix string) crypto.PrivKey {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Printf("wrote %d bytes\n", n3)
+		log.Tracef("wrote %d bytes\n", n3)
 
 		f.Sync()
 		f.Close()

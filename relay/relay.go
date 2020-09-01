@@ -1,17 +1,17 @@
 package relay
 
 import (
-	"fmt"
+	"github.com/juju/loggo"
 	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p-core/peer"
 	"lachain-communication-hub/communication"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/storage"
 	"lachain-communication-hub/types"
 	"lachain-communication-hub/utils"
-	"log"
-
-	"github.com/libp2p/go-libp2p-core/peer"
 )
+
+var log = loggo.GetLogger("builder")
 
 func Run() {
 
@@ -26,8 +26,7 @@ func Run() {
 	relayHost.SetStreamHandler("/getPeerAddr", handleGetPeerAddr)
 	relayHost.SetStreamHandler("/register", handleRegister)
 
-	fmt.Println("Listening on")
-	fmt.Println(h2info)
+	log.Infof("Listening on: ", h2info)
 }
 
 func handleGetPeerAddr(s network.Stream) {
@@ -35,20 +34,20 @@ func handleGetPeerAddr(s network.Stream) {
 	publicKey, err := communication.ReadOnce(s)
 	if err != nil {
 		if err.Error() == "stream reset" {
-			fmt.Println("Connection closed by peer")
+			log.Errorf("Connection closed by peer")
 			return
 		}
 		panic(err)
 	}
 
 	if peerId, err := storage.GetPeerIdByPublicKey(string(publicKey)); err != nil {
-		log.Println("Peer not found with public key:", string(publicKey), err)
+		log.Warningf("Peer not found with public key %s: %s", string(publicKey), err)
 		err = communication.Write(s, []byte("0"))
 		if err != nil {
 			return
 		}
 	} else {
-		log.Println("Found peer with public key:", string(publicKey))
+		log.Debugf("Found peer with public key: %s", string(publicKey))
 		err = communication.Write(s, []byte(peerId.Pretty()))
 		if err != nil {
 			return
@@ -65,7 +64,7 @@ func handleRegister(s network.Stream) {
 	signature, err := communication.ReadOnce(s)
 	if err != nil {
 		if err.Error() == "stream reset" {
-			fmt.Println("Connection closed by peer")
+			log.Errorf("Connection closed by peer")
 			return
 		}
 		panic(err)
@@ -73,7 +72,7 @@ func handleRegister(s network.Stream) {
 
 	publicKey, err := utils.EcRecover(peerId, signature)
 	if err != nil {
-		log.Println(err)
+		log.Errorf("%s", err)
 		return
 	}
 
@@ -81,7 +80,7 @@ func handleRegister(s network.Stream) {
 
 	err = communication.Write(s, []byte("1"))
 	if err != nil {
-		log.Println(err)
+		log.Errorf("%s", err)
 		return
 	}
 

@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/juju/loggo"
 	"lachain-communication-hub/config"
 	server "lachain-communication-hub/grpc"
 	"lachain-communication-hub/peer"
@@ -12,10 +13,11 @@ import (
 )
 
 func main() {
-
+	loggo.ConfigureLoggers("<root>=INFO")
 	if len(os.Args) <= 1 {
 		localPeer := peer.New("_h1")
-		server.New(config.GRPCPort, &localPeer)
+		s := server.New(config.GRPCPort, &localPeer)
+		go s.Serve()
 	} else {
 		if os.Args[1] == "-relay" {
 			relay.Run()
@@ -26,5 +28,5 @@ func main() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	<-ch
-	fmt.Println("Received signal, shutting down...")
+	log.Info("Received signal, shutting down...")
 }

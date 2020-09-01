@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 
 namespace Lachain.CommunicationHub.Net
 {
@@ -6,6 +7,7 @@ namespace Lachain.CommunicationHub.Net
     {
         internal readonly Lazy<StartHub> StartHub;
         internal readonly Lazy<StopHub> StopHub;
+        internal readonly Lazy<LogLevel> LogLevel;
 
         
         const string Lib = "hub";
@@ -20,6 +22,7 @@ namespace Lachain.CommunicationHub.Net
             // load all delegates
             StartHub = LazyDelegate<StartHub>();
             StopHub = LazyDelegate<StopHub>();
+            LogLevel = LazyDelegate<LogLevel>();
         }
 
         Lazy<TDelegate> LazyDelegate<TDelegate>()
@@ -39,6 +42,18 @@ namespace Lachain.CommunicationHub.Net
         public static void Stop()
         {
             Imports.StopHub.Value();
+        }
+
+        public static void SetLogLevel(string s)
+        {
+            unsafe
+            {
+                var bytes = Encoding.UTF8.GetBytes(s);
+                fixed (byte* ptr = bytes)
+                {
+                    Imports.LogLevel.Value(ptr, bytes.Length);
+                }                
+            }
         }
     }
 }

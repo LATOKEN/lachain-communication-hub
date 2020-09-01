@@ -1,12 +1,14 @@
 package peer
 
 import (
+	"github.com/juju/loggo"
 	"github.com/libp2p/go-libp2p-core/network"
 	"io"
 	"lachain-communication-hub/communication"
-	"log"
 	"time"
 )
+
+var handler = loggo.GetLogger("handler")
 
 func incomingConnectionEstablishmentHandler(peer *Peer) func(s network.Stream) {
 	return func(s network.Stream) {
@@ -19,18 +21,18 @@ func runHubMsgHandler(peer *Peer, s network.Stream) {
 		msg, err := communication.ReadOnce(s)
 		if err != nil {
 			if err == io.EOF {
-				log.Println("connection reset")
+				handler.Errorf("connection reset")
 				time.Sleep(2 * time.Second)
 				continue
 			}
-			log.Println("Can't read message. Closing connection")
-			log.Println(err)
+			handler.Errorf("Can't read message. Closing connection")
+			handler.Errorf("%s", err)
 			s.Close()
 			break
 		}
 		err = processMessage(peer, s, msg)
 		if err != nil {
-			log.Println("Connection problem")
+			handler.Errorf("Connection problem")
 			s.Close()
 			return
 		}
@@ -44,7 +46,7 @@ func processMessage(localPeer *Peer, s network.Stream, msg []byte) error {
 
 	localPeer.grpcMsgHandler(msg)
 
-	log.Println("received msg from peer:", s.Conn().RemotePeer())
+	handler.Tracef("received msg from peer: %s", s.Conn().RemotePeer())
 
 	switch string(msg) {
 	case "ping":
