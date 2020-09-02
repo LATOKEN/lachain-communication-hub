@@ -16,11 +16,13 @@ import (
 	"lachain-communication-hub/types"
 	"log"
 	"strings"
+	"sync"
 )
 
 type Peer struct {
 	host           core.Host
 	streams        map[string]network.Stream
+	streamsLock    *sync.Mutex
 	grpcMsgHandler func([]byte)
 }
 
@@ -38,7 +40,8 @@ func New(id string) Peer {
 	if err := localHost.Connect(context.Background(), relayInfo); err != nil {
 		panic(err)
 	}
-	localPeer := Peer{localHost, make(map[string]network.Stream), nil}
+	mut := &sync.Mutex{}
+	localPeer := Peer{localHost, make(map[string]network.Stream), mut, nil}
 
 	localPeer.SetStreamHandlerFn(GRPCHandlerMock)
 	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(&localPeer))
@@ -92,32 +95,32 @@ func (localPeer *Peer) Register(signature []byte) {
 	localPeer.register(signature)
 }
 
-func (localPeer *Peer) connectToPeer(publicKey string) error {
-	if _, ok := localPeer.streams[publicKey]; ok {
-		return nil
+func (localPeer *Peer) connectToPeer(publicKey string) (network.Stream, error) {
+	if _, ok := localPeer.GetStream(publicKey); ok {
+		return nil, nil
 	}
 
 	relayStream, err := localPeer.host.NewStream(context.Background(), config.GetRelayID(), "/getPeerAddr")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = communication.Write(relayStream, []byte(publicKey))
 	if err != nil {
 		relayStream.Close()
-		return err
+		return nil, err
 	}
 
 	peerIdBytes, err := communication.ReadOnce(relayStream)
 	if err != nil {
 		relayStream.Close()
-		return err
+		return nil, err
 	}
 
 	peerAddrBytes, err := communication.ReadOnce(relayStream)
 	if err != nil {
 		relayStream.Close()
-		return err
+		return nil, err
 	}
 
 	relayStream.Close()
@@ -125,7 +128,7 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 	peerId, err := peer.Decode(string(peerIdBytes))
 	if err != nil {
 		fmt.Println("Peer not found")
-		return err
+		return nil, err
 	}
 
 	peerAddr, _ := ma.NewMultiaddrBytes(peerAddrBytes)
@@ -134,7 +137,7 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 		// Creates a relay address
 		peerAddr, err = ma.NewMultiaddr("/p2p/" + config.GetRelayID().Pretty() + "/p2p-circuit/p2p/" + peerId.Pretty())
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
@@ -149,14 +152,14 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 		Addrs: []ma.Multiaddr{peerAddr},
 	}
 	if err := localPeer.host.Connect(context.Background(), relayedPeerInfo); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Woohoo! we're connected!
 	hubStream, err := localPeer.host.NewStream(context.Background(), peerId, "/hub")
 	if err != nil {
 		fmt.Println("huh, this should have worked: ", err)
-		return err
+		return nil, err
 	}
 
 	go func() {
@@ -175,7 +178,7 @@ func (localPeer *Peer) connectToPeer(publicKey string) error {
 	}()
 
 	localPeer.RegisterConnection(publicKey, hubStream)
-	return nil
+	return hubStream, nil
 }
 
 func (localPeer *Peer) GetPeerPublicKeyById(peerId peer.ID) (string, error) {
@@ -207,19 +210,21 @@ func (localPeer *Peer) GetPeerPublicKeyById(peerId peer.ID) (string, error) {
 }
 
 func (localPeer *Peer) RegisterConnection(publicKey string, stream network.Stream) {
+	localPeer.streamsLock.Lock()
+	defer localPeer.streamsLock.Unlock()
 	localPeer.streams[publicKey] = stream
 }
 
 func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte) {
 
-	err := localPeer.connectToPeer(publicKey)
+	s, err := localPeer.connectToPeer(publicKey)
 	if err != nil {
 		log.Println("Can't establish connection with", publicKey)
 		log.Println(err)
 		return
 	}
 
-	err = communication.Write(localPeer.streams[publicKey], msg)
+	err = communication.Write(s, msg)
 	if err != nil {
 		log.Printf("Cant connect to peer %s. Removing from connected", publicKey)
 		localPeer.removeFromConnected(publicKey)
@@ -259,6 +264,8 @@ func (localPeer *Peer) GetId() []byte {
 }
 
 func (localPeer *Peer) removeFromConnected(publicKey string) {
+	localPeer.streamsLock.Lock()
+	defer localPeer.streamsLock.Unlock()
 	if s, ok := localPeer.streams[publicKey]; ok {
 		localPeer.host.Network().ClosePeer(s.Conn().RemotePeer())
 		s.Close()
@@ -279,6 +286,13 @@ func (localPeer *Peer) GetExternalMultiAddress() (ma.Multiaddr, error) {
 		}
 	}
 	return nil, errors.New("not found")
+}
+
+func (localPeer *Peer) GetStream(pubKey string) (network.Stream, bool) {
+	localPeer.streamsLock.Lock()
+	defer localPeer.streamsLock.Unlock()
+	s, ok := localPeer.streams[pubKey]
+	return s, ok
 }
 
 func (localPeer *Peer) IsConnectionWithPeerIdExists(peerId peer.ID) bool {
