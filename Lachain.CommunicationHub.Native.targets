@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Condition="'$(SkipSecp256k1NativeLibCopy)' != 'true'">
+
+    <Content Include="$(MSBuildThisFileDirectory)..\..\runtimes\linux-x64\native\libhub.so">
+      <PackageCopyToOutput>true</PackageCopyToOutput>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>native\linux-x64\libhub.so</Link>
+      <Visible>true</Visible>
+      <Pack>false</Pack>
+    </Content>
+    <Content Include="$(MSBuildThisFileDirectory)..\..\runtimes\osx-x64\native\libhub.dylib">
+      <PackageCopyToOutput>true</PackageCopyToOutput>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>native\osx-x64\libhub.dylib</Link>
+      <Visible>true</Visible>
+      <Pack>false</Pack>
+    </Content>
+    <Content Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\hub.dll">
+      <PackageCopyToOutput>true</PackageCopyToOutput>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>native\win-x64\hub.dll</Link>
+      <Visible>true</Visible>
+      <Pack>false</Pack>
+    </Content>
+
+  </ItemGroup>
+</Project>

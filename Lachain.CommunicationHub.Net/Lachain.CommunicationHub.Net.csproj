@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <LangVersion>8</LangVersion>
+        <Nullable>enable</Nullable>
+        <Version>0.0.2</Version>
+        <Title>Lachain.CommunicationHub.Net</Title>
+        <Authors>Skird</Authors>
+        <Description>Netstandard 2.1 wrapper for Lachain communication hub library. Use Lachain.CommunicationHub.Native package to get platform specific binaries for common platforms.</Description>
+        <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+        <IncludeSource>true</IncludeSource>
+        <RepositoryType>git</RepositoryType>
+        <RepositoryUrl>https://github.com/LAToken/lachain-communication-hub.git</RepositoryUrl>
+        <PackageProjectUrl>https://github.com/LAToken/lachain-communication-hub</PackageProjectUrl>
+        <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    </PropertyGroup>
+
+</Project>

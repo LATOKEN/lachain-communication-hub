@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"fmt"
+	"github.com/juju/loggo"
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -14,16 +14,19 @@ import (
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/types"
-	"log"
+	"sync/atomic"
 	"strings"
 	"sync"
 )
+
+var log = loggo.GetLogger("peer")
 
 type Peer struct {
 	host           core.Host
 	streams        map[string]network.Stream
 	streamsLock    *sync.Mutex
 	grpcMsgHandler func([]byte)
+	running        int32
 }
 
 func GRPCHandlerMock([]byte) {}
@@ -41,12 +44,22 @@ func New(id string) Peer {
 		panic(err)
 	}
 	mut := &sync.Mutex{}
-	localPeer := Peer{localHost, make(map[string]network.Stream), mut, nil}
-
+	localPeer := Peer{localHost, make(map[string]network.Stream), mut, nil, 1}
 	localPeer.SetStreamHandlerFn(GRPCHandlerMock)
 	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(&localPeer))
 
 	return localPeer
+}
+
+func (localPeer *Peer) Stop() {
+	atomic.StoreInt32(&localPeer.running, 0)
+	for s := range localPeer.streams {
+		localPeer.streams[s].Close()
+	}
+	localPeer.streams = make(map[string]network.Stream)
+	if err := localPeer.host.Close(); err != nil {
+		panic(err)
+	}
 }
 
 func (localPeer *Peer) register(signature []byte) {
@@ -56,36 +69,36 @@ func (localPeer *Peer) register(signature []byte) {
 		panic(err)
 	}
 
-	fmt.Println("peer registration")
-	fmt.Println("signature", hex.EncodeToString(signature))
-	fmt.Println("peerId", localPeer.host.ID())
+	log.Debugf("peer registration")
+	log.Debugf("signature %s", hex.EncodeToString(signature))
+	log.Debugf("peerId %s", localPeer.host.ID())
 
 	err = communication.Write(s, signature)
 	if err != nil {
-		log.Fatal("cannot register", err)
+		log.Errorf("cannot register: %s", err)
 	}
 
 	extAddr, err := localPeer.GetExternalMultiAddress()
 	if err != nil {
 		err = communication.Write(s, []byte("0"))
 		if err != nil {
-			log.Fatal("cannot register", err)
+			log.Errorf("cannot register: %s", err)
 		}
 	} else {
 		extAddrBytes := extAddr.Bytes()
 		err = communication.Write(s, extAddrBytes)
 		if err != nil {
-			log.Fatal("cannot register", err)
+			log.Errorf("cannot register: %s", err)
 		}
 	}
 
 	resp, err := communication.ReadOnce(s)
 	if err != nil {
-		log.Fatal("cannot register", err)
+		log.Errorf("cannot register: %s", err)
 	}
 
 	if string(resp) != "1" {
-		log.Fatal("cannot register", string(resp))
+		log.Errorf("cannot register: %s", string(resp))
 	}
 
 	s.Close()
@@ -96,6 +109,9 @@ func (localPeer *Peer) Register(signature []byte) {
 }
 
 func (localPeer *Peer) connectToPeer(publicKey string) (network.Stream, error) {
+	if localPeer.running == 0 {
+		return nil, nil
+	}
 	if _, ok := localPeer.GetStream(publicKey); ok {
 		return nil, nil
 	}
@@ -127,7 +143,7 @@ func (localPeer *Peer) connectToPeer(publicKey string) (network.Stream, error) {
 
 	peerId, err := peer.Decode(string(peerIdBytes))
 	if err != nil {
-		fmt.Println("Peer not found")
+		log.Errorf("Peer not found")
 		return nil, err
 	}
 
@@ -158,12 +174,12 @@ func (localPeer *Peer) connectToPeer(publicKey string) (network.Stream, error) {
 	// Woohoo! we're connected!
 	hubStream, err := localPeer.host.NewStream(context.Background(), peerId, "/hub")
 	if err != nil {
-		fmt.Println("huh, this should have worked: ", err)
+		log.Errorf("huh, this should have worked: %s", err)
 		return nil, err
 	}
 
 	go func() {
-		for {
+		for localPeer.running != 0 {
 			resp, err := localPeer.ReceiveResponseFromPeer(publicKey)
 			if err != nil {
 				localPeer.removeFromConnected(publicKey)
@@ -216,33 +232,38 @@ func (localPeer *Peer) RegisterConnection(publicKey string, stream network.Strea
 }
 
 func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte) {
-
+	if localPeer.running == 0 {
+		return
+	}
 	s, err := localPeer.connectToPeer(publicKey)
 	if err != nil {
-		log.Println("Can't establish connection with", publicKey)
-		log.Println(err)
+		log.Errorf("Can't establish connection with: %s", publicKey)
+		log.Errorf("%s", err)
 		return
 	}
 
 	err = communication.Write(s, msg)
 	if err != nil {
-		log.Printf("Cant connect to peer %s. Removing from connected", publicKey)
+		log.Errorf("Cant connect to peer %s. Removing from connected", publicKey)
 		localPeer.removeFromConnected(publicKey)
 		return
 	}
 }
 
 func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) ([]byte, error) {
+	if localPeer.running == 0 {
+		return nil, nil
+	}
 	s, ok := localPeer.streams[publicKey]
 	if !ok {
-		fmt.Println("Connection not found with", publicKey)
+		log.Errorf("Connection not found with %s", publicKey)
 		return nil, errors.New("not found")
 	}
 
 	msg, err := communication.ReadOnce(s)
 	if err != nil {
 		if err.Error() == "stream reset" {
-			log.Println("Connection closed by peer")
+			log.Errorf("Connection closed by peer")
 			localPeer.removeFromConnected(publicKey)
 			return nil, errors.New("conn reset")
 		}

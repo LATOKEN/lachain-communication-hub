@@ -4,8 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/juju/loggo"
 	"github.com/libp2p/go-libp2p"
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	core "github.com/libp2p/go-libp2p-core"
@@ -18,12 +17,13 @@ import (
 )
 
 var prvPathPrefix = "./prv"
+var log = loggo.GetLogger("builder")
 
 func GetPrivateKeyForHost(postfix string) crypto.PrivKey {
 	var prv crypto.PrivKey
 	prvPath := prvPathPrefix + postfix + ".txt"
 	if _, err := os.Stat(prvPath); os.IsNotExist(err) {
-		fmt.Println("Generating private key")
+		log.Debugf("Generating private key")
 		prv, _, err = crypto.GenerateECDSAKeyPair(rand.Reader)
 		if err != nil {
 			panic(err)
@@ -45,7 +45,7 @@ func GetPrivateKeyForHost(postfix string) crypto.PrivKey {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Printf("wrote %d bytes\n", n3)
+		log.Tracef("wrote %d bytes\n", n3)
 
 		f.Sync()
 		f.Close()
@@ -86,7 +86,7 @@ func BuildNamedHost(typ int, postfix string) core.Host {
 	case types.Peer:
 		externalIP := conf.GetP2PExternalIP()
 		if externalIP == "" {
-			log.Warn("External IP not defined, Peers might not be able to resolve this node if behind NAT")
+			log.Warningf("External IP not defined, Peers might not be able to resolve this node if behind NAT")
 		}
 		host, err := libp2p.New(
 			context.Background(),

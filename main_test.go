@@ -5,13 +5,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/juju/loggo"
 	"google.golang.org/grpc"
 	"io"
 	"lachain-communication-hub/config"
 	server "lachain-communication-hub/grpc"
 	"lachain-communication-hub/peer"
 	"lachain-communication-hub/utils"
-	"log"
 	"testing"
 	"time"
 
@@ -22,6 +22,8 @@ const (
 	address1 = "localhost" + config.GRPCPort
 	address2 = "localhost:50002"
 )
+
+var log = loggo.GetLogger("builder.go")
 
 func TestCommunication(t *testing.T) {
 	// connect clients
@@ -34,7 +36,7 @@ func TestCommunication(t *testing.T) {
 	client := pb.NewCommunicationHubClient(conn1)
 	stream, err := client.Communicate(context.Background())
 	if err != nil {
-		log.Fatalf("openn stream error %v", err)
+		log.Errorf("open stream error %v", err)
 	}
 	done := make(chan bool)
 
@@ -44,7 +46,7 @@ func TestCommunication(t *testing.T) {
 			Data:      []byte("ping"),
 		}
 		if err := stream.Send(&req); err != nil {
-			log.Fatalf("can not send %v", err)
+			log.Errorf("can not send %v", err)
 		}
 	}()
 
@@ -56,9 +58,9 @@ func TestCommunication(t *testing.T) {
 				return
 			}
 			if err != nil {
-				log.Fatalf("can not receive %v", err)
+				log.Errorf("can not receive %v", err)
 			}
-			log.Println("received grpc message:", string(resp.Data))
+			log.Tracef("received grpc message: %s", string(resp.Data))
 			stream.CloseSend()
 		}
 	}()
@@ -72,7 +74,7 @@ func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, [
 
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
-		log.Fatalf("did not connect: %v", err)
+		log.Errorf("did not connect: %v", err)
 	}
 
 	c := pb.NewCommunicationHubClient(conn)
@@ -80,13 +82,13 @@ func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, [
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	getKeyResult, err := c.GetKey(ctx, &pb.GetHubIdRequest{})
 	if err != nil {
-		log.Fatalf("could not GetKey: %v", err)
+		log.Errorf("could not GetKey: %v", err)
 	}
 	cancel()
 
 	prv, err := crypto.GenerateKey()
 	if err != nil {
-		log.Fatalf("could not GenerateKey: %v", err)
+		log.Errorf("could not GenerateKey: %v", err)
 	}
 	pub := crypto.CompressPubkey(&prv.PublicKey)
 
@@ -103,10 +105,10 @@ func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, [
 		Signature: signature,
 	})
 	if err != nil {
-		log.Fatalf("could not Init: %v", err)
+		log.Errorf("could not Init: %v", err)
 	}
 	cancel()
 
-	log.Println("init result:", initR.Result)
+	log.Debugf("init result: %s", initR.Result)
 	return conn, pub
 }
