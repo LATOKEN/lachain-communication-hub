@@ -265,3 +265,4 @@ Lachain.CommunicationHub.Net/obj
 *.swp
 *.txt
 *.pb.go
+lib/
