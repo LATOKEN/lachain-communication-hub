@@ -14,9 +14,9 @@ import (
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/types"
-	"sync/atomic"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 var log = loggo.GetLogger("peer")
@@ -110,10 +110,11 @@ func (localPeer *Peer) Register(signature []byte) {
 
 func (localPeer *Peer) connectToPeer(publicKey string) (network.Stream, error) {
 	if localPeer.running == 0 {
-		return nil, nil
+		return nil, errors.New("not running")
 	}
-	if _, ok := localPeer.GetStream(publicKey); ok {
-		return nil, nil
+
+	if s, ok := localPeer.GetStream(publicKey); ok {
+		return s, nil
 	}
 
 	relayStream, err := localPeer.host.NewStream(context.Background(), config.GetRelayID(), "/getPeerAddr")
