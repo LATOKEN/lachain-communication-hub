@@ -266,3 +266,4 @@ Lachain.CommunicationHub.Net/obj
 *.txt
 *.pb.go
 lib/
+bin/
