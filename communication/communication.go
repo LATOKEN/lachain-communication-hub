@@ -36,14 +36,8 @@ func ReadFromReader(reader *bufio.Reader) ([]byte, error) {
 	bytesLeft := int(ExtractLength(msg))
 
 	for bytesLeft > 0 {
-		var l int
-		if l = bytesLeft; bytesLeft > 4096 {
-			if l = 4096; len(result) == 0 {
-				l = 4092
-			}
-		}
 
-		msg = make([]byte, l)
+		msg = make([]byte, 4096)
 		n, err := reader.Read(msg)
 		if err != nil {
 			return nil, err
