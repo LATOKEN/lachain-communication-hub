@@ -17,6 +17,7 @@ func incomingConnectionEstablishmentHandler(peer *Peer) func(s network.Stream) {
 }
 
 func runHubMsgHandler(peer *Peer, s network.Stream) {
+	handler.Tracef("Running runHubMsgHandler() for peer %p", peer)
 	for {
 		remotePeerId := s.Conn().RemotePeer()
 		connectionExists := peer.IsConnectionWithPeerIdExists(remotePeerId)
@@ -56,9 +57,10 @@ func processMessage(localPeer *Peer, s network.Stream, msg []byte) error {
 		return nil
 	}
 
+	handler.Tracef("Calling grpc message (%p) handler on peer (%p)", localPeer.grpcMsgHandler, localPeer)
 	localPeer.grpcMsgHandler(msg)
 
-	handler.Tracef("received msg from peer: %s", s.Conn().RemotePeer())
+	handler.Tracef("received msg from peer: %s, message len = %d", s.Conn().RemotePeer(), len(msg))
 
 	switch string(msg) {
 	case "ping":

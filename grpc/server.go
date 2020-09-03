@@ -44,6 +44,7 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 	ctx := stream.Context()
 
 	onMsg := func(msg []byte) {
+		log.Tracef("On message callback is called")
 		select {
 		case <-ctx.Done():
 			log.Errorf("Unable to send msg via rpc")
@@ -83,7 +84,7 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 			return err
 		}
 
-		log.Tracef("Sending message to peer %s message length %s", hex.EncodeToString(req.PublicKey), len(req.Data))
+		log.Tracef("Sending message to peer %s message length %d", hex.EncodeToString(req.PublicKey), len(req.Data))
 		s.peer.SendMessageToPeer(hex.EncodeToString(req.PublicKey), req.Data)
 	}
 }

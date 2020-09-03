@@ -29,7 +29,9 @@ type Peer struct {
 	running        int32
 }
 
-func GRPCHandlerMock([]byte) {}
+func GRPCHandlerMock([]byte) {
+	log.Tracef("Skipped received message in the mock...")
+}
 
 func New(id string) Peer {
 	localHost := host.BuildNamedHost(types.Peer, id)
@@ -275,6 +277,7 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) ([]byte, error)
 
 func (localPeer *Peer) SetStreamHandlerFn(callback func(msg []byte)) {
 	localPeer.grpcMsgHandler = callback
+	log.Tracef("Messaged handling callback to (%p) is set for peer (%p)", callback, localPeer)
 }
 
 func (localPeer *Peer) GetId() []byte {
