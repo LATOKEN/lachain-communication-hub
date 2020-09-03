@@ -284,7 +284,7 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) ([]byte, error)
 	if localPeer.running == 0 {
 		return nil, nil
 	}
-	s, ok := localPeer.streams[publicKey]
+	s, ok := localPeer.GetStream(publicKey)
 	if !ok {
 		log.Errorf("Connection not found with %s", publicKey)
 		return nil, errors.New("not found")

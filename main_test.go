@@ -26,6 +26,7 @@ const (
 var log = loggo.GetLogger("builder.go")
 
 func TestCommunication(t *testing.T) {
+	loggo.ConfigureLoggers("<root>=TRACE")
 	// connect clients
 	conn1, _ := makeServerPeer("_h1", config.GRPCPort, address1)
 	defer conn1.Close()
@@ -38,6 +39,7 @@ func TestCommunication(t *testing.T) {
 	if err != nil {
 		log.Errorf("open stream error %v", err)
 	}
+
 	done := make(chan bool)
 
 	go func() {
@@ -60,17 +62,21 @@ func TestCommunication(t *testing.T) {
 			if err != nil {
 				log.Errorf("can not receive %v", err)
 			}
-			log.Tracef("received grpc message: %s", string(resp.Data))
+			log.Infof("received grpc message: %s", string(resp.Data))
 			stream.CloseSend()
+			done <- true
 		}
 	}()
 
 	<-done
+	fmt.Println("finish")
 }
 
 func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, []byte) {
 	p := peer.New(id)
-	server.New(port, p)
+	serv := server.New(port, p)
+
+	go serv.Serve()
 
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {

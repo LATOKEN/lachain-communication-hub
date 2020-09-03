@@ -96,16 +96,19 @@ func runServer(s *grpc.Server, lis net.Listener) {
 	}
 }
 
-func New(port string, localPeer *peer.Peer) *Server {
-	p := localPeer
+func New(port string, p *peer.Peer) *Server {
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		log.Errorf("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	server := &Server{peer: p, grpcServer: s, Serve: func() {
-		runServer(s, lis)
-	}}
+	server := &Server{
+		peer:       p,
+		grpcServer: s,
+		Serve: func() {
+			runServer(s, lis)
+		},
+	}
 	pb.RegisterCommunicationHubServer(s, server)
 	return server
 }
