@@ -50,7 +50,7 @@ func ReadFromReader(reader *bufio.Reader) ([]byte, error) {
 		}
 
 		result = append(result, msg[:n]...)
-		bytesLeft -= l
+		bytesLeft -= n
 	}
 
 	return result, nil
