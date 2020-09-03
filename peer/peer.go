@@ -24,9 +24,10 @@ var log = loggo.GetLogger("peer")
 type Peer struct {
 	host           core.Host
 	streams        map[string]network.Stream
-	streamsLock    *sync.Mutex
+	mutex          *sync.Mutex
 	grpcMsgHandler func([]byte)
 	running        int32
+	msgChannels    map[string]chan []byte
 }
 
 func GRPCHandlerMock([]byte) {
@@ -48,8 +49,9 @@ func New(id string) *Peer {
 	mut := &sync.Mutex{}
 	localPeer := new(Peer)
 	localPeer.streams = make(map[string]network.Stream)
+	localPeer.msgChannels = make(map[string]chan []byte)
 	localPeer.host = localHost
-	localPeer.streamsLock = mut
+	localPeer.mutex = mut
 	localPeer.running = 1
 	localPeer.SetStreamHandlerFn(GRPCHandlerMock)
 	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(localPeer))
@@ -233,28 +235,49 @@ func (localPeer *Peer) GetPeerPublicKeyById(peerId peer.ID) (string, error) {
 }
 
 func (localPeer *Peer) RegisterConnection(publicKey string, stream network.Stream) {
-	localPeer.streamsLock.Lock()
-	defer localPeer.streamsLock.Unlock()
+	localPeer.mutex.Lock()
+	defer localPeer.mutex.Unlock()
 	localPeer.streams[publicKey] = stream
 }
 
 func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte) {
-	if localPeer.running == 0 {
-		return
+	localPeer.mutex.Lock()
+	defer localPeer.mutex.Unlock()
+	if msgChannel, ok := localPeer.msgChannels[publicKey]; ok {
+		msgChannel <- msg
+	} else {
+		msgChannel = localPeer.SendingChannel(publicKey)
+		localPeer.msgChannels[publicKey] = msgChannel
+		msgChannel <- msg
 	}
-	s, err := localPeer.connectToPeer(publicKey)
-	if err != nil {
-		log.Errorf("Can't establish connection with: %s", publicKey)
-		log.Errorf("%s", err)
-		return
-	}
+}
 
-	err = communication.Write(s, msg)
-	if err != nil {
-		log.Errorf("Cant connect to peer %s. Removing from connected", publicKey)
-		localPeer.removeFromConnected(publicKey)
-		return
-	}
+func (localPeer *Peer) SendingChannel(publicKey string) chan []byte {
+	messages := make(chan []byte)
+
+	go func() {
+		for {
+			msg := <-messages
+
+			if localPeer.running == 0 {
+				continue
+			}
+			s, err := localPeer.connectToPeer(publicKey)
+			if err != nil {
+				log.Errorf("Can't establish connection with: %s", publicKey)
+				log.Errorf("%s", err)
+				continue
+			}
+
+			err = communication.Write(s, msg)
+			if err != nil {
+				log.Errorf("Cant connect to peer %s. Removing from connected", publicKey)
+				localPeer.removeFromConnected(publicKey)
+				continue
+			}
+		}
+	}()
+	return messages
 }
 
 func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) ([]byte, error) {
@@ -293,8 +316,8 @@ func (localPeer *Peer) GetId() []byte {
 }
 
 func (localPeer *Peer) removeFromConnected(publicKey string) {
-	localPeer.streamsLock.Lock()
-	defer localPeer.streamsLock.Unlock()
+	localPeer.mutex.Lock()
+	defer localPeer.mutex.Unlock()
 	if s, ok := localPeer.streams[publicKey]; ok {
 		localPeer.host.Network().ClosePeer(s.Conn().RemotePeer())
 		s.Close()
@@ -318,8 +341,8 @@ func (localPeer *Peer) GetExternalMultiAddress() (ma.Multiaddr, error) {
 }
 
 func (localPeer *Peer) GetStream(pubKey string) (network.Stream, bool) {
-	localPeer.streamsLock.Lock()
-	defer localPeer.streamsLock.Unlock()
+	localPeer.mutex.Lock()
+	defer localPeer.mutex.Unlock()
 	s, ok := localPeer.streams[pubKey]
 	return s, ok
 }

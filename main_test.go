@@ -70,7 +70,7 @@ func TestCommunication(t *testing.T) {
 
 func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, []byte) {
 	p := peer.New(id)
-	server.New(port, &p)
+	server.New(port, p)
 
 	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
 	if err != nil {
