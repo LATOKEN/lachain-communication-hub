@@ -7,13 +7,13 @@ import (
 	"lachain-communication-hub/peer"
 )
 
-var localPeer peer.Peer
+var localPeer *peer.Peer
 var grpcServer *server.Server
 
 //export StartHub
 func StartHub() {
 	localPeer = peer.New("_h1")
-	grpcServer = server.New(config.GRPCPort, &localPeer)
+	grpcServer = server.New(config.GRPCPort, localPeer)
 	grpcServer.Serve()
 }
 

@@ -33,7 +33,7 @@ func GRPCHandlerMock([]byte) {
 	log.Tracef("Skipped received message in the mock...")
 }
 
-func New(id string) Peer {
+func New(id string) *Peer {
 	localHost := host.BuildNamedHost(types.Peer, id)
 
 	relayInfo := peer.AddrInfo{
@@ -46,9 +46,13 @@ func New(id string) Peer {
 		panic(err)
 	}
 	mut := &sync.Mutex{}
-	localPeer := Peer{localHost, make(map[string]network.Stream), mut, nil, 1}
+	localPeer := new(Peer)
+	localPeer.streams = make(map[string]network.Stream)
+	localPeer.host = localHost
+	localPeer.streamsLock = mut
+	localPeer.running = 1
 	localPeer.SetStreamHandlerFn(GRPCHandlerMock)
-	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(&localPeer))
+	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(localPeer))
 
 	return localPeer
 }

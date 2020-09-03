@@ -16,7 +16,7 @@ func main() {
 	loggo.ConfigureLoggers("<root>=INFO")
 	if len(os.Args) <= 1 {
 		localPeer := peer.New("_h1")
-		s := server.New(config.GRPCPort, &localPeer)
+		s := server.New(config.GRPCPort, localPeer)
 		go s.Serve()
 	} else {
 		if os.Args[1] == "-relay" {
@@ -25,7 +25,7 @@ func main() {
 		if os.Args[1] == "-nolookup" {
 			config.DisableIpLookup()
 			localPeer := peer.New("_h1")
-			server.New(config.GRPCPort, &localPeer)
+			server.New(config.GRPCPort, localPeer)
 		}
 	}
 
