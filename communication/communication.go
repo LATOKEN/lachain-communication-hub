@@ -44,13 +44,12 @@ func ReadFromReader(reader *bufio.Reader) ([]byte, error) {
 		}
 
 		msg = make([]byte, l)
-
-		_, err = reader.Read(msg)
+		n, err := reader.Read(msg)
 		if err != nil {
 			return nil, err
 		}
 
-		result = append(result, msg...)
+		result = append(result, msg[:n]...)
 		bytesLeft -= l
 	}
 
