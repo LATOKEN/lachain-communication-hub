@@ -17,9 +17,13 @@ protoc   --go_out=Mgrpc/service_config/service_config.proto=/internal/proto/grpc
 
 Build project
 ```
-    go build -o hub
+    go build -o hub main.go
 ```
 
+Build shared library to use in other apps
+```
+    go build -o libhub.so embedded_hub.go
+```
 
 #### Run
 
