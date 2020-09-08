@@ -17,6 +17,13 @@ func StartHub() {
 	grpcServer.Serve()
 }
 
+//export StartHubOnPort
+func StartHubOnPort(port *C.char, len C.int) {
+	localPeer = peer.New("_h1")
+	grpcServer = server.New(C.GoStringN(port, len), localPeer)
+	grpcServer.Serve()
+}
+
 //export LogLevel
 func LogLevel(s *C.char, len C.int) {
 	loggo.ConfigureLoggers(C.GoStringN(s, len))
