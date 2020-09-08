@@ -34,9 +34,16 @@ namespace Lachain.CommunicationHub.Net
             );
         }
 
-        public static void Start()
+        public static void Start(string port)
         {
-            Imports.StartHub.Value();
+            unsafe
+            {
+                var bytes = Encoding.UTF8.GetBytes(port);
+                fixed (byte* ptr = bytes)
+                {
+                    Imports.StartHub.Value(ptr, bytes.Length);
+                }                
+            }
         }
         
         public static void Stop()

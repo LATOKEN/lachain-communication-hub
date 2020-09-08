@@ -27,6 +27,11 @@ func main() {
 			localPeer := peer.New("_h1")
 			server.New(config.GRPCPort, localPeer)
 		}
+        if os.Args[1] == "-port" && len(os.Args) >= 2 {
+            localPeer := peer.New("_h1")
+            s := server.New(os.Args[2], localPeer)
+            go s.Serve()
+        }
 	}
 
 	// wait for a SIGINT or SIGTERM signal
