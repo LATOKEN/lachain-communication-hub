@@ -39,3 +39,8 @@ Peer
 ```
     ./hub
 ```
+
+Peer on custom port
+```
+    ./hub -port :50002
+```
