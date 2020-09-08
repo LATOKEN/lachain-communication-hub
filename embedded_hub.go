@@ -2,7 +2,6 @@ package main
 import "C"
 import (
 	"github.com/juju/loggo"
-	"lachain-communication-hub/config"
 	server "lachain-communication-hub/grpc"
 	"lachain-communication-hub/peer"
 )
@@ -11,14 +10,7 @@ var localPeer *peer.Peer
 var grpcServer *server.Server
 
 //export StartHub
-func StartHub() {
-	localPeer = peer.New("_h1")
-	grpcServer = server.New(config.GRPCPort, localPeer)
-	grpcServer.Serve()
-}
-
-//export StartHubOnPort
-func StartHubOnPort(port *C.char, len C.int) {
+func StartHub(port *C.char, len C.int) {
 	localPeer = peer.New("_h1")
 	grpcServer = server.New(C.GoStringN(port, len), localPeer)
 	grpcServer.Serve()

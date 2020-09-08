@@ -6,7 +6,6 @@ namespace Lachain.CommunicationHub.Net
     public class Hub
     {
         internal readonly Lazy<StartHub> StartHub;
-        internal readonly Lazy<StartHubOnPort> StartHubOnPort;
         internal readonly Lazy<StopHub> StopHub;
         internal readonly Lazy<LogLevel> LogLevel;
 
@@ -22,7 +21,6 @@ namespace Lachain.CommunicationHub.Net
         {
             // load all delegates
             StartHub = LazyDelegate<StartHub>();
-            StartHubOnPort = LazyDelegate<StartHubOnPort>();
             StopHub = LazyDelegate<StopHub>();
             LogLevel = LazyDelegate<LogLevel>();
         }
@@ -36,21 +34,16 @@ namespace Lachain.CommunicationHub.Net
             );
         }
 
-        public static void StartOnPort(string port)
+        public static void Start(string port)
         {
             unsafe
             {
                 var bytes = Encoding.UTF8.GetBytes(port);
                 fixed (byte* ptr = bytes)
                 {
-                    Imports.StartHubOnPort.Value(ptr, bytes.Length);
+                    Imports.StartHub.Value(ptr, bytes.Length);
                 }                
             }
-        }
-        
-        public static void Start()
-        {
-            Imports.StartHub.Value();
         }
         
         public static void Stop()
