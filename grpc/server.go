@@ -69,6 +69,7 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 		// or continue
 		select {
 		case <-ctx.Done():
+			log.Errorf("Communication error: %s", ctx.Err())
 			return ctx.Err()
 		default:
 		}
@@ -77,10 +78,11 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 		req, err := stream.Recv()
 		if err == io.EOF {
 			// return will close stream from server side
-			log.Errorf("exit")
+			log.Errorf("Communication error: %s", err)
 			return err
 		}
 		if err != nil {
+			log.Errorf("Communication error: %s", err)
 			return err
 		}
 
