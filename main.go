@@ -6,7 +6,6 @@ import (
 	"lachain-communication-hub/config"
 	server "lachain-communication-hub/grpc"
 	"lachain-communication-hub/peer"
-	"lachain-communication-hub/relay"
 	"os"
 	"os/signal"
 	"syscall"
@@ -19,19 +18,16 @@ func main() {
 		s := server.New(config.GRPCPort, localPeer)
 		go s.Serve()
 	} else {
-		if os.Args[1] == "-relay" {
-			relay.Run()
-		}
 		if os.Args[1] == "-nolookup" {
 			config.DisableIpLookup()
 			localPeer := peer.New("_h1")
 			server.New(config.GRPCPort, localPeer)
 		}
-        if os.Args[1] == "-port" && len(os.Args) >= 2 {
-            localPeer := peer.New("_h1")
-            s := server.New(os.Args[2], localPeer)
-            go s.Serve()
-        }
+		if os.Args[1] == "-port" && len(os.Args) >= 2 {
+			localPeer := peer.New("_h1")
+			s := server.New(os.Args[2], localPeer)
+			go s.Serve()
+		}
 	}
 
 	// wait for a SIGINT or SIGTERM signal

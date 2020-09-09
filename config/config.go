@@ -6,12 +6,12 @@ import (
 	"lachain-communication-hub/utils"
 )
 
-const RelayAddr = "/ip4/95.217.215.141/tcp/37645"
+const RelayAddr = "/ip4/95.217.215.141/tcp/41011"
 const GRPCPort = ":50001"
 
 var ipLookup = true
 
-func GetRelayMultiaddr() ma.Multiaddr {
+func GetBootstrapMultiaddr() ma.Multiaddr {
 	relayMultiaddr, err := ma.NewMultiaddr(RelayAddr)
 	if err != nil {
 		panic(err)
@@ -20,8 +20,8 @@ func GetRelayMultiaddr() ma.Multiaddr {
 	return relayMultiaddr
 }
 
-func GetRelayID() peer.ID {
-	id, err := peer.Decode("QmUodkW8hRWayaRTBb12bfosNvPTq5gQhAso6M3Xk42SUh")
+func GetBootstrapID() peer.ID {
+	id, err := peer.Decode("QmaAV3KD9vWhDfrWutZGXy8hMoVU2FtCMirPEPpUPHszAZ")
 	if err != nil {
 		panic(err)
 	}

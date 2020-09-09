@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"encoding/hex"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
 	"google.golang.org/grpc"
 	"io"
@@ -85,9 +86,13 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 			log.Errorf("Communication error: %s", err)
 			return err
 		}
-
 		log.Tracef("Sending message to peer %s message length %d", hex.EncodeToString(req.PublicKey), len(req.Data))
-		s.peer.SendMessageToPeer(hex.EncodeToString(req.PublicKey), req.Data)
+
+		pub, err := crypto.DecompressPubkey(req.PublicKey)
+		if err != nil {
+			panic(err)
+		}
+		s.peer.SendMessageToPeer(pub, req.Data)
 	}
 }
 

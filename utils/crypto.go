@@ -5,11 +5,14 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/juju/loggo"
 )
 
 const (
 	ChainId = 41
 )
+
+var log = loggo.GetLogger("utils")
 
 func LaSign(data []byte, prv *ecdsa.PrivateKey) ([]byte, error) {
 
@@ -28,19 +31,41 @@ func EcRecover(data, sig []byte) (*ecdsa.PublicKey, error) {
 	if len(sig) != 65 {
 		return nil, fmt.Errorf("signature must be 65 bytes long")
 	}
-	sig[64] = (sig[64] - 36) / 2 / ChainId // Transform V
+	recSig := make([]byte, 65)
+	copy(recSig, sig)
+	recSig[64] = (sig[64] - 36) / 2 / ChainId // Transform V
 
-	rpk, err := crypto.Ecrecover(dataHash, sig)
+	rpk, err := crypto.Ecrecover(dataHash, recSig)
 	if err != nil {
 		return nil, err
 	}
 
 	pub, err := crypto.UnmarshalPubkey(rpk)
+	if err != nil {
+		return nil, err
+	}
 
 	return pub, nil
 }
 
 func PublicKeyToHexString(publicKey *ecdsa.PublicKey) string {
-
 	return hex.EncodeToString(crypto.CompressPubkey(publicKey))
+}
+
+func PublicKeyToBytes(publicKey *ecdsa.PublicKey) []byte {
+	return crypto.CompressPubkey(publicKey)
+}
+
+func HexToPublicKey(publicKey string) *ecdsa.PublicKey {
+	publicKeyBytes, err := hex.DecodeString(publicKey)
+	if err != nil {
+		log.Errorf("can't decode public key: %s", publicKey)
+	}
+
+	pub, err := crypto.DecompressPubkey(publicKeyBytes)
+	if err != nil {
+		log.Errorf("can't unmarshal public key: %s", publicKey)
+	}
+
+	return pub
 }

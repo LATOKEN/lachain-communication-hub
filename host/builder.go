@@ -10,10 +10,10 @@ import (
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p/config"
-	ma "github.com/multiformats/go-multiaddr"
 	conf "lachain-communication-hub/config"
 	"lachain-communication-hub/types"
 	"os"
+	"strings"
 )
 
 var prvPathPrefix = "./prv"
@@ -88,21 +88,20 @@ func BuildNamedHost(typ int, postfix string) core.Host {
 		if externalIP == "" {
 			log.Warningf("External IP not defined, Peers might not be able to resolve this node if behind NAT")
 		}
+		var listenAddrs libp2p.Option
+
+		// set port if we are bootstrap
+		if strings.Contains(conf.GetBootstrapMultiaddr().String(), externalIP) {
+			listenAddrs = libp2p.ListenAddrs(conf.GetBootstrapMultiaddr())
+		} else {
+			listenAddrs = libp2p.ListenAddrs()
+		}
 		host, err := libp2p.New(
 			context.Background(),
-			libp2p.ListenAddrs(),
+			listenAddrs,
+			libp2p.EnableRelay(circuit.OptHop),
 			prvKeyOpt,
 		)
-		if err != nil {
-			panic(err)
-		}
-		return host
-	case types.Relay:
-		addrOpt := func(c *config.Config) error {
-			c.ListenAddrs = []ma.Multiaddr{conf.GetRelayMultiaddr()}
-			return nil
-		}
-		host, err := libp2p.New(context.Background(), libp2p.ListenAddrs(conf.GetRelayMultiaddr()), libp2p.EnableRelay(circuit.OptHop), prvKeyOpt, addrOpt)
 		if err != nil {
 			panic(err)
 		}
