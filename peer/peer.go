@@ -376,6 +376,8 @@ func (localPeer *Peer) GetStream(pubKey *ecdsa.PublicKey) (network.Stream, bool)
 }
 
 func (localPeer *Peer) IsStreamWithPeerRegistered(peerId peer.ID) bool {
+	localPeer.mutex.Lock()
+	defer localPeer.mutex.Unlock()
 	for _, s := range localPeer.streams {
 		if s.Conn().RemotePeer() == peerId {
 			return true
