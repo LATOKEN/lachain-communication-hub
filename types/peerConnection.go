@@ -21,20 +21,25 @@ type PeerConnection struct {
 
 type PeerConnectionSerializable struct {
 	PublicKey []byte
-	Id        peer.ID
+	Id        string
 	LastSeen  uint32
-	Addr      ma.Multiaddr
+	Addr      []byte
 }
 
 func (pc *PeerConnection) toBytes() []byte {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
-
+	var addr []byte
+	if pc.Addr == nil {
+		addr = []byte{}
+	} else {
+		addr = pc.Addr.Bytes()
+	}
 	ser := PeerConnectionSerializable{
 		PublicKey: crypto.CompressPubkey(pc.PublicKey),
-		Id:        pc.Id,
+		Id:        pc.Id.Pretty(),
 		LastSeen:  pc.LastSeen,
-		Addr:      pc.Addr,
+		Addr:      addr,
 	}
 
 	err := enc.Encode(ser)
@@ -52,10 +57,10 @@ func (pc *PeerConnection) Encode() []byte {
 }
 
 func PeerConnectionFromBytes(raw []byte) *PeerConnection {
-	var buf bytes.Buffer
-	buf.Write(raw)
+
+	buf := bytes.NewBuffer(raw)
 	var peerConn PeerConnectionSerializable
-	dec := gob.NewDecoder(&buf)
+	dec := gob.NewDecoder(buf)
 	err := dec.Decode(&peerConn)
 	if err != nil {
 		log.Fatal("decode error:", err)
@@ -63,14 +68,27 @@ func PeerConnectionFromBytes(raw []byte) *PeerConnection {
 
 	pub, err := crypto.DecompressPubkey(peerConn.PublicKey)
 	if err != nil {
-		log.Fatal("decompress error:", err)
+		log.Fatal("decompress pub error:", err)
+	}
+
+	id, err := peer.Decode(peerConn.Id)
+	if err != nil {
+		log.Fatal("decompress id error:", err)
+	}
+
+	var addr ma.Multiaddr
+	if len(peerConn.Addr) > 0 {
+		addr, err = ma.NewMultiaddrBytes(peerConn.Addr)
+		if err != nil {
+			log.Fatal("decompress addr error:", err)
+		}
 	}
 
 	return &PeerConnection{
 		PublicKey: pub,
-		Id:        peerConn.Id,
+		Id:        id,
 		LastSeen:  peerConn.LastSeen,
-		Addr:      peerConn.Addr,
+		Addr:      addr,
 	}
 }
 
