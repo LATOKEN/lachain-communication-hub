@@ -44,7 +44,7 @@ func GetPeerByPublicKey(publicKey *ecdsa.PublicKey) (*types.PeerConnection, erro
 			return peer, nil
 		}
 	}
-	return nil, errors.New("not found")
+	return nil, errors.New("GetPeerByPublicKey: not found")
 }
 
 func GetAllPeers() []*types.PeerConnection {
@@ -78,7 +78,7 @@ func GetPeerById(peerId peer.ID) (*types.PeerConnection, error) {
 			return peer, nil
 		}
 	}
-	return nil, errors.New("not found")
+	return nil, errors.New("GetPeerById: not found")
 }
 
 func RegisterOrUpdatePeer(addingPeer *types.PeerConnection) {

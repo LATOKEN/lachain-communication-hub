@@ -356,7 +356,7 @@ func (localPeer *Peer) removeFromConnected(publicKey *ecdsa.PublicKey) {
 func (localPeer *Peer) GetExternalMultiAddress() (ma.Multiaddr, error) {
 	extIp := config.GetP2PExternalIP()
 	if extIp == "" {
-		return nil, errors.New("not found")
+		return nil, errors.New("GetExternalMultiAddress: extIp not found")
 	}
 	addresses := localPeer.host.Network().Peerstore().Addrs(localPeer.host.ID())
 
@@ -365,7 +365,7 @@ func (localPeer *Peer) GetExternalMultiAddress() (ma.Multiaddr, error) {
 			return addr, nil
 		}
 	}
-	return nil, errors.New("not found")
+	return nil, errors.New("GetExternalMultiAddress: addr not found")
 }
 
 func (localPeer *Peer) GetStream(pubKey *ecdsa.PublicKey) (network.Stream, bool) {
