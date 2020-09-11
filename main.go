@@ -11,7 +11,7 @@ import (
 	"syscall"
 )
 
-func main() {
+func startHub() {
 	loggo.ConfigureLoggers("<root>=INFO")
 	if len(os.Args) <= 1 {
 		localPeer := peer.New("_h1")

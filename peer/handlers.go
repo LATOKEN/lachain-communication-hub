@@ -16,46 +16,45 @@ var handler = loggo.GetLogger("handler")
 
 func incomingConnectionEstablishmentHandler(peer *Peer) func(s network.Stream) {
 	return func(s network.Stream) {
-		go runHubMsgHandler(peer, s)
+		runHubMsgHandler(peer, s)
 	}
 }
 
 func runHubMsgHandler(peer *Peer, s network.Stream) {
-	handler.Tracef("Running runHubMsgHandler() for peer %p", peer)
-	for {
-		remotePeerId := s.Conn().RemotePeer()
-		connectionExists := peer.IsStreamWithPeerRegistered(remotePeerId)
+	remotePeerId := s.Conn().RemotePeer()
+	connectionExists := peer.IsStreamWithPeerRegistered(remotePeerId)
 
-		if !connectionExists {
-			remotePeer, err := storage.GetPeerById(remotePeerId)
-			if err != nil {
-				log.Warningf("Peer not found with id %s", remotePeerId)
-				s.Close()
-				break
-			}
-			peer.RegisterStream(remotePeer.PublicKey, s)
-		}
+	log.Tracef("Received msg from peer (we are conn initiator) %s", s.Conn().RemotePeer().Pretty())
 
-		msg, err := communication.ReadOnce(s)
+	if !connectionExists {
+		remotePeer, err := storage.GetPeerById(remotePeerId)
 		if err != nil {
-			if err == io.EOF {
-				handler.Errorf("connection reset")
-				time.Sleep(2 * time.Second)
-				continue
-			}
-			handler.Errorf("Can't read message. Closing connection")
-			handler.Errorf("%s", err)
-			s.Close()
-			break
-		}
-		err = processMessage(peer, s, msg)
-		if err != nil {
-			handler.Errorf("Connection problem")
+			log.Warningf("Peer not found with id %s", remotePeerId)
 			s.Close()
 			return
 		}
-		storage.UpdateRegisteredPeerById(remotePeerId)
+		peer.RegisterStream(remotePeer.PublicKey, s)
 	}
+
+	msg, err := communication.ReadOnce(s)
+	if err != nil {
+		if err == io.EOF {
+			handler.Errorf("connection reset")
+			time.Sleep(2 * time.Second)
+			return
+		}
+		handler.Errorf("Can't read message. Closing connection")
+		handler.Errorf("%s", err)
+		s.Close()
+		return
+	}
+	err = processMessage(peer, s, msg)
+	if err != nil {
+		handler.Errorf("Connection problem")
+		s.Close()
+		return
+	}
+	storage.UpdateRegisteredPeerById(remotePeerId)
 }
 
 func processMessage(localPeer *Peer, s network.Stream, msg []byte) error {

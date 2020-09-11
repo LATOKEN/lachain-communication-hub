@@ -3,7 +3,6 @@ package storage
 import (
 	"bytes"
 	"crypto/ecdsa"
-	"encoding/hex"
 	"errors"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
@@ -61,7 +60,7 @@ func GetRecentPeers() []*types.PeerConnection {
 	var result []*types.PeerConnection
 
 	for _, peerConn := range peersMu.peers {
-		if peerConn.LastSeen > uint32(time.Now().Add(time.Duration(-3)*time.Hour).Unix()) {
+		if peerConn.LastSeen > uint32(time.Now().Add(time.Duration(-2)*time.Minute).Unix()) {
 			result = append(result, peerConn)
 		}
 	}
@@ -88,13 +87,13 @@ func RegisterOrUpdatePeer(addingPeer *types.PeerConnection) {
 	for i, peer := range peersMu.peers {
 		if peer.Id == addingPeer.Id {
 			peersMu.peers[i] = addingPeer
-			log.Debugf("peer successfully updated:  %s, %s", addingPeer.Id, addingPeer.Addr)
+			//log.Debugf("peer successfully updated:  %s, %s", addingPeer.Id, addingPeer.Addr)
 			return
 		}
 	}
 
 	peersMu.peers = append(peersMu.peers, addingPeer)
-	log.Debugf("peer successfully registered:  %s, %s", addingPeer.Id, addingPeer.Addr)
+	//log.Debugf("peer successfully registered:  %s, %s", addingPeer.Id, addingPeer.Addr)
 }
 
 func UpdateRegisteredPeerById(id peer.ID) {
@@ -104,7 +103,7 @@ func UpdateRegisteredPeerById(id peer.ID) {
 	for i, peer := range peersMu.peers {
 		if peer.Id == id {
 			peersMu.peers[i].LastSeen = uint32(time.Now().Unix())
-			log.Debugf("peer successfully updated:  %s, %s", peer.Id, peer.Addr)
+			//log.Debugf("peer successfully updated:  %s, %s", peer.Id, peer.Addr)
 			return
 		}
 	}
@@ -117,7 +116,7 @@ func UpdateRegisteredPeerByPublicKey(publicKey *ecdsa.PublicKey) {
 	for i, peer := range peersMu.peers {
 		if peer.PublicKey != nil && bytes.Equal(crypto.CompressPubkey(peer.PublicKey), crypto.CompressPubkey(publicKey)) {
 			peersMu.peers[i].LastSeen = uint32(time.Now().Unix())
-			log.Debugf("peer successfully updated:  %s, %s, %s", hex.EncodeToString(crypto.CompressPubkey(peer.PublicKey)), peer.Id, peer.Addr)
+			//log.Debugf("peer successfully updated:  %s, %s, %s", hex.EncodeToString(crypto.CompressPubkey(peer.PublicKey)), peer.Id, peer.Addr)
 			return
 		}
 	}

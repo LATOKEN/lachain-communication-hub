@@ -23,15 +23,17 @@ import (
 	"time"
 )
 
+const MaxTryToConnect = 3
+
 var log = loggo.GetLogger("peer")
 
 type Peer struct {
 	host           core.Host
-	streams        map[*ecdsa.PublicKey]network.Stream
+	streams        map[string]network.Stream
 	mutex          *sync.Mutex
 	grpcMsgHandler func([]byte)
 	running        int32
-	msgChannels    map[*ecdsa.PublicKey]chan []byte
+	msgChannels    map[string]chan []byte
 	PublicKey      *ecdsa.PublicKey
 }
 
@@ -60,8 +62,8 @@ func New(id string) *Peer {
 
 	mut := &sync.Mutex{}
 	localPeer := new(Peer)
-	localPeer.streams = make(map[*ecdsa.PublicKey]network.Stream)
-	localPeer.msgChannels = make(map[*ecdsa.PublicKey]chan []byte)
+	localPeer.streams = make(map[string]network.Stream)
+	localPeer.msgChannels = make(map[string]chan []byte)
 	localPeer.host = localHost
 	localPeer.mutex = mut
 	localPeer.running = 1
@@ -78,21 +80,20 @@ func (localPeer *Peer) Stop() {
 	for i := range localPeer.streams {
 		localPeer.streams[i].Close()
 	}
-	localPeer.streams = make(map[*ecdsa.PublicKey]network.Stream)
+	localPeer.streams = make(map[string]network.Stream)
 	if err := localPeer.host.Close(); err != nil {
 		panic(err)
 	}
 }
 
 func (localPeer *Peer) Register(signature []byte) {
-
 	peerId, _ := localPeer.host.ID().Marshal()
 	localPublicKey, err := utils.EcRecover(peerId, signature)
 	if err != nil {
 		log.Errorf("%s", err)
 		return
 	}
-	fmt.Println("localPubKey", utils.PublicKeyToHexString(localPublicKey))
+	log.Debugf("localPubKey", utils.PublicKeyToHexString(localPublicKey))
 	localPeer.SetPublicKey(localPublicKey)
 
 	bootstrap := &types.PeerConnection{
@@ -100,14 +101,16 @@ func (localPeer *Peer) Register(signature []byte) {
 		Addr: config.GetBootstrapMultiaddr(),
 	}
 
-	if err := localPeer.registerOnPeer(bootstrap, signature); err != nil {
-		log.Errorf("Can't register on bootstrap")
-	}
-
 	if config.GetBootstrapID() == localPeer.host.ID() {
 		log.Debugf("We won't ask self, skipping registration")
 		return
 	}
+
+	if err := localPeer.registerOnPeer(bootstrap, signature); err != nil {
+		log.Errorf("Can't register on bootstrap")
+	}
+
+	log.Debugf("registered on bootstrap")
 
 	bootstrapStream, err := localPeer.host.NewStream(context.Background(), config.GetBootstrapID(), "/getPeers")
 	if err != nil {
@@ -126,24 +129,45 @@ func (localPeer *Peer) Register(signature []byte) {
 		return
 	}
 
-	for _, curr := range types.DecodeArray(peersBytes) {
-		if localPeer.host.ID() == curr.Id {
+	peerConnections := types.DecodeArray(peersBytes)
+
+	log.Debugf("Received %v peers", len(peerConnections))
+	connected := 0
+
+	for i, curr := range peerConnections {
+		// skip bootstrap and self connection
+		if curr.Id == localPeer.host.ID() || curr.Id == config.GetBootstrapID() {
 			continue
 		}
+
+		log.Debugf("Registering on %v/%v", i+1, len(peerConnections))
+
+		// just store connection
 		storage.RegisterOrUpdatePeer(curr)
+
+		// register on external peer even if this one is behind NAT
 		if err := localPeer.registerOnPeer(curr, signature); err != nil {
 			continue
 		}
+
+		// refresh connection's timestamp
 		storage.UpdateRegisteredPeerById(curr.Id)
+		connected++
+
 	}
+
+	log.Debugf("Registered %v peers", connected)
 }
 
 func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream, error) {
+	localPeer.mutex.Lock()
+	defer localPeer.mutex.Unlock()
+
 	if localPeer.running == 0 {
 		return nil, errors.New("not running")
 	}
 
-	if s, ok := localPeer.GetStream(publicKey); ok {
+	if s, ok := localPeer.streams[utils.PublicKeyToHexString(publicKey)]; ok {
 		return s, nil
 	}
 
@@ -174,6 +198,7 @@ func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream
 	}
 
 	if !connected {
+		errCount := 0
 		for _, relayPeer := range storage.GetAllPeers() {
 			if storage.IsDirectlyConnected(relayPeer.Id) || relayPeer.Addr == nil {
 				continue
@@ -183,7 +208,11 @@ func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream
 				continue
 			}
 			if err := localPeer.connectToPeerUsingRelay(relayPeer.Id, targetPeer.Id); err != nil {
-				log.Debugf("Can't connect to %s through %s: %s", targetPeer.Id, relayPeer.Id, err)
+				//log.Debugf("Can't connect to %s through %s: %s", targetPeer.Id, relayPeer.Id, err)
+				errCount++
+				if errCount == MaxTryToConnect {
+					break
+				}
 				continue
 			}
 			connected = true
@@ -217,7 +246,7 @@ func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream
 		}
 	}()
 
-	localPeer.RegisterStream(publicKey, hubStream)
+	localPeer.streams[utils.PublicKeyToHexString(publicKey)] = hubStream
 	return hubStream, nil
 }
 
@@ -252,17 +281,21 @@ func (localPeer *Peer) GetPeerPublicKeyById(peerId peer.ID) (string, error) {
 func (localPeer *Peer) RegisterStream(publicKey *ecdsa.PublicKey, stream network.Stream) {
 	localPeer.mutex.Lock()
 	defer localPeer.mutex.Unlock()
-	localPeer.streams[publicKey] = stream
+	localPeer.streams[utils.PublicKeyToHexString(publicKey)] = stream
 }
 
 func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte) {
 	localPeer.mutex.Lock()
-	defer localPeer.mutex.Unlock()
-	if msgChannel, ok := localPeer.msgChannels[publicKey]; ok {
+	msgChannel, ok := localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)]
+	localPeer.mutex.Unlock()
+
+	if ok {
 		msgChannel <- msg
 	} else {
 		msgChannel = localPeer.SendingChannel(publicKey)
-		localPeer.msgChannels[publicKey] = msgChannel
+		localPeer.mutex.Lock()
+		localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)] = msgChannel
+		localPeer.mutex.Unlock()
 		msgChannel <- msg
 	}
 }
@@ -306,6 +339,8 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey *ecdsa.PublicKey) ([]by
 		return nil, errors.New("not found")
 	}
 
+	log.Tracef("Received msg from peer (we are conn initiator) %s", s.Conn().RemotePeer().Pretty())
+
 	msg, err := communication.ReadOnce(s)
 	if err != nil {
 		if err.Error() == "stream reset" {
@@ -346,10 +381,10 @@ func (localPeer *Peer) removeFromConnected(publicKey *ecdsa.PublicKey) {
 	}
 
 	storage.RemoveConnection(peer.Id)
-	if s, ok := localPeer.streams[publicKey]; ok {
+	if s, ok := localPeer.streams[utils.PublicKeyToHexString(publicKey)]; ok {
 		localPeer.host.Network().ClosePeer(s.Conn().RemotePeer())
 		s.Close()
-		delete(localPeer.streams, publicKey)
+		delete(localPeer.streams, utils.PublicKeyToHexString(publicKey))
 	}
 }
 
@@ -371,7 +406,7 @@ func (localPeer *Peer) GetExternalMultiAddress() (ma.Multiaddr, error) {
 func (localPeer *Peer) GetStream(pubKey *ecdsa.PublicKey) (network.Stream, bool) {
 	localPeer.mutex.Lock()
 	defer localPeer.mutex.Unlock()
-	s, ok := localPeer.streams[pubKey]
+	s, ok := localPeer.streams[utils.PublicKeyToHexString(pubKey)]
 	return s, ok
 }
 
@@ -424,9 +459,14 @@ func (localPeer *Peer) connectToPeerUsingRelay(relayId peer.ID, targetPeerId pee
 }
 
 func (localPeer *Peer) establishRelayedConnection(targetPeerId peer.ID) error {
+	errCount := 0
 	for _, connectedPeerId := range storage.GetDirectlyConnectedPeerIds() {
 		if err := localPeer.connectToPeerUsingRelay(connectedPeerId, targetPeerId); err != nil {
 			log.Debugf("Can't connect to %s through %s: %s", targetPeerId, connectedPeerId, err)
+			errCount++
+			if errCount == MaxTryToConnect {
+				return errors.New("can't connect")
+			}
 			continue
 		}
 		return nil
@@ -454,7 +494,7 @@ func (localPeer *Peer) registerOnPeer(conn *types.PeerConnection, signature []by
 	}
 
 	if err := localPeer.host.Connect(context.Background(), peerInfo); err != nil {
-		log.Debugf("can't connect to peer: %s", peerInfo)
+		//log.Debugf("can't connect to peer: %s", peerInfo)
 		return err
 	}
 
