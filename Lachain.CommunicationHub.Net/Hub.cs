@@ -9,7 +9,7 @@ namespace Lachain.CommunicationHub.Net
         internal readonly Lazy<StopHub> StopHub;
         internal readonly Lazy<LogLevel> LogLevel;
 
-        
+
         const string Lib = "hub";
 
         private static readonly Lazy<string> LibPathLazy = new Lazy<string>(() => LibPathResolver.Resolve(Lib));
@@ -34,18 +34,23 @@ namespace Lachain.CommunicationHub.Net
             );
         }
 
-        public static void Start(string port)
+        public static void Start(string grpcAddress, string bootstrapAddress)
         {
             unsafe
             {
-                var bytes = Encoding.UTF8.GetBytes(port);
-                fixed (byte* ptr = bytes)
+                var grpcAddressBytes = Encoding.UTF8.GetBytes(grpcAddress);
+                var bootstrapAddressBytes = Encoding.UTF8.GetBytes(bootstrapAddress);
+                fixed (byte* grpcAddressPtr = grpcAddressBytes)
+                fixed (byte* bootstrapAddressPtr = bootstrapAddressBytes)
                 {
-                    Imports.StartHub.Value(ptr, bytes.Length);
-                }                
+                    Imports.StartHub.Value(
+                        grpcAddressPtr, grpcAddressBytes.Length,
+                        bootstrapAddressPtr, bootstrapAddressBytes.Length
+                    );
+                }
             }
         }
-        
+
         public static void Stop()
         {
             Imports.StopHub.Value();
@@ -59,7 +64,7 @@ namespace Lachain.CommunicationHub.Net
                 fixed (byte* ptr = bytes)
                 {
                     Imports.LogLevel.Value(ptr, bytes.Length);
-                }                
+                }
             }
         }
     }
