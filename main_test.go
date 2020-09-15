@@ -19,9 +19,9 @@ import (
 	pb "lachain-communication-hub/grpc/protobuf"
 )
 
-const (
+var (
 	address1 = "localhost" + config.GRPCPort
-	address2 = "localhost:50002"
+	address2 = "localhost:50003"
 )
 
 var log = loggo.GetLogger("builder.go")
@@ -32,7 +32,7 @@ func TestCommunication(t *testing.T) {
 	conn1, _ := makeServerPeer("_h1", config.GRPCPort, address1)
 	defer conn1.Close()
 
-	conn2, pub := makeServerPeer("_h2", ":50002", address2)
+	conn2, pub := makeServerPeer("_h2", ":50003", address2)
 	defer conn2.Close()
 
 	client := pb.NewCommunicationHubClient(conn1)

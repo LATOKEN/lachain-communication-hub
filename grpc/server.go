@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
 	"google.golang.org/grpc"
@@ -31,10 +32,9 @@ func (s *Server) GetKey(ctx context.Context, in *pb.GetHubIdRequest) (*pb.GetHub
 
 func (s *Server) Init(ctx context.Context, in *pb.InitRequest) (*pb.InitReply, error) {
 	log.Tracef("Received: Init Request")
-	s.peer.Register(in.GetSignature())
+	result := s.peer.Register(in.GetSignature())
 	return &pb.InitReply{
-		// TODO: check real result
-		Result: true,
+		Result: result,
 	}, nil
 }
 
@@ -106,7 +106,7 @@ func runServer(s *grpc.Server, lis net.Listener) {
 func New(port string, p *peer.Peer) *Server {
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
-		log.Errorf("failed to listen: %v", err)
+		panic(fmt.Sprintf("failed to listen: %v", err))
 	}
 	s := grpc.NewServer()
 	server := &Server{

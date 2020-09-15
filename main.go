@@ -11,8 +11,8 @@ import (
 	"syscall"
 )
 
-func startHub() {
-	loggo.ConfigureLoggers("<root>=INFO")
+func main() {
+	loggo.ConfigureLoggers("<root>=TRACE")
 	if len(os.Args) <= 1 {
 		localPeer := peer.New("_h1")
 		s := server.New(config.GRPCPort, localPeer)

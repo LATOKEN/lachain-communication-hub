@@ -86,12 +86,12 @@ func (localPeer *Peer) Stop() {
 	}
 }
 
-func (localPeer *Peer) Register(signature []byte) {
+func (localPeer *Peer) Register(signature []byte) bool {
 	peerId, _ := localPeer.host.ID().Marshal()
 	localPublicKey, err := utils.EcRecover(peerId, signature)
 	if err != nil {
 		log.Errorf("%s", err)
-		return
+		return false
 	}
 	log.Debugf("localPubKey", utils.PublicKeyToHexString(localPublicKey))
 	localPeer.SetPublicKey(localPublicKey)
@@ -103,7 +103,7 @@ func (localPeer *Peer) Register(signature []byte) {
 
 	if config.GetBootstrapID() == localPeer.host.ID() {
 		log.Debugf("We won't ask self, skipping registration")
-		return
+		return false
 	}
 
 	if err := localPeer.registerOnPeer(bootstrap, signature); err != nil {
@@ -126,7 +126,7 @@ func (localPeer *Peer) Register(signature []byte) {
 
 	if string(peersBytes) == "0" {
 		log.Debugf("No peers received..")
-		return
+		return false
 	}
 
 	peerConnections := types.DecodeArray(peersBytes)
@@ -157,6 +157,7 @@ func (localPeer *Peer) Register(signature []byte) {
 	}
 
 	log.Debugf("Registered %v peers", connected)
+	return true
 }
 
 func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream, error) {
@@ -319,7 +320,7 @@ func (localPeer *Peer) SendingChannel(publicKey *ecdsa.PublicKey) chan []byte {
 
 			err = communication.Write(s, msg)
 			if err != nil {
-				log.Errorf("Cant connect to peer %s. Removing from connected", publicKey)
+				log.Errorf("Can't connect to peer %s. Removing from connected", publicKey)
 				localPeer.removeFromConnected(publicKey)
 				continue
 			}
