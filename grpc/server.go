@@ -1,8 +1,8 @@
 package grpc
 
 import (
+	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
@@ -15,6 +15,8 @@ import (
 )
 
 var log = loggo.GetLogger("server")
+
+var ZeroPub = make([]byte, 33)
 
 type Server struct {
 	pb.UnimplementedCommunicationHubServer
@@ -86,13 +88,16 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 			log.Errorf("Communication error: %s", err)
 			return err
 		}
-		log.Tracef("Sending message to peer %s message length %d", hex.EncodeToString(req.PublicKey), len(req.Data))
 
-		pub, err := crypto.DecompressPubkey(req.PublicKey)
-		if err != nil {
-			panic(err)
+		if bytes.Equal(req.PublicKey, ZeroPub) {
+			s.peer.BroadcastMessage(req.Data)
+		} else {
+			pub, err := crypto.DecompressPubkey(req.PublicKey)
+			if err != nil {
+				panic(err)
+			}
+			s.peer.SendMessageToPeer(pub, req.Data)
 		}
-		s.peer.SendMessageToPeer(pub, req.Data)
 	}
 }
 

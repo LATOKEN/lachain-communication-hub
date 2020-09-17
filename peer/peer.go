@@ -37,6 +37,8 @@ type Peer struct {
 	PublicKey      *ecdsa.PublicKey
 }
 
+var globalQuit = make(chan struct{})
+
 func GRPCHandlerMock([]byte) {
 	log.Tracef("Skipped received message in the mock...")
 }
@@ -76,6 +78,7 @@ func New(id string) *Peer {
 }
 
 func (localPeer *Peer) Stop() {
+	close(globalQuit)
 	atomic.StoreInt32(&localPeer.running, 0)
 	for i := range localPeer.streams {
 		localPeer.streams[i].Close()
@@ -286,6 +289,7 @@ func (localPeer *Peer) RegisterStream(publicKey *ecdsa.PublicKey, stream network
 }
 
 func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte) {
+	log.Tracef("Sending message to peer %s message length %d", utils.PublicKeyToHexString(publicKey), len(msg))
 	localPeer.mutex.Lock()
 	msgChannel, ok := localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)]
 	localPeer.mutex.Unlock()
@@ -293,7 +297,7 @@ func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte)
 	if ok {
 		msgChannel <- msg
 	} else {
-		msgChannel = localPeer.SendingChannel(publicKey)
+		msgChannel = localPeer.NewSendingChannel(publicKey)
 		localPeer.mutex.Lock()
 		localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)] = msgChannel
 		localPeer.mutex.Unlock()
@@ -301,30 +305,45 @@ func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte)
 	}
 }
 
-func (localPeer *Peer) SendingChannel(publicKey *ecdsa.PublicKey) chan []byte {
+func (localPeer *Peer) BroadcastMessage(msg []byte) {
+	activePeers := storage.GetRecentPeers()
+	for _, peer := range activePeers {
+		if peer.PublicKey == nil {
+			continue
+		}
+		localPeer.SendMessageToPeer(peer.PublicKey, msg)
+	}
+}
+
+func (localPeer *Peer) NewSendingChannel(publicKey *ecdsa.PublicKey) chan []byte {
 	messages := make(chan []byte)
+
+	fmt.Println("new msg channel for", utils.PublicKeyToHexString(publicKey))
 
 	go func() {
 		for {
-			msg := <-messages
+			select {
+			case msg := <-messages:
+				if localPeer.running == 0 {
 
-			if localPeer.running == 0 {
-				continue
-			}
-			s, err := localPeer.connectToPeer(publicKey)
-			if err != nil {
-				log.Errorf("Can't establish connection with: %s", utils.PublicKeyToHexString(publicKey))
-				log.Errorf("%s", err)
-				continue
-			}
+				}
+				s, err := localPeer.connectToPeer(publicKey)
+				if err != nil {
+					log.Errorf("Can't establish connection with: %s", utils.PublicKeyToHexString(publicKey))
+					log.Errorf("%s", err)
+					continue
+				}
 
-			err = communication.Write(s, msg)
-			if err != nil {
-				log.Errorf("Can't connect to peer %s. Removing from connected", publicKey)
-				localPeer.removeFromConnected(publicKey)
-				continue
+				err = communication.Write(s, msg)
+				if err != nil {
+					log.Errorf("Can't connect to peer %s. Removing from connected", publicKey)
+					localPeer.removeFromConnected(publicKey)
+					continue
+				}
+				storage.UpdateRegisteredPeerByPublicKey(publicKey)
+			case <-globalQuit:
+				fmt.Println("quiting", utils.PublicKeyToHexString(publicKey))
 			}
-			storage.UpdateRegisteredPeerByPublicKey(publicKey)
 		}
 	}()
 	return messages
