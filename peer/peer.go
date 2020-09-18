@@ -78,12 +78,28 @@ func New(id string) *Peer {
 }
 
 func (localPeer *Peer) Stop() {
-	close(globalQuit)
+	localPeer.mutex.Lock()
+	defer localPeer.mutex.Unlock()
+
 	atomic.StoreInt32(&localPeer.running, 0)
-	for i := range localPeer.streams {
-		localPeer.streams[i].Close()
+
+	for _, stream := range localPeer.streams {
+		stream.Close()
 	}
 	localPeer.streams = make(map[string]network.Stream)
+
+	if err := localPeer.host.ConnManager().Close(); err != nil {
+		panic(err)
+	}
+	if err := localPeer.host.Network().Close(); err != nil {
+		panic(err)
+	}
+	if err := localPeer.host.Peerstore().Close(); err != nil {
+		panic(err)
+	}
+	localPeer.host.RemoveStreamHandler("/getPeers")
+	localPeer.host.RemoveStreamHandler("/hub")
+	localPeer.host.RemoveStreamHandler("/register")
 	if err := localPeer.host.Close(); err != nil {
 		panic(err)
 	}
@@ -325,7 +341,7 @@ func (localPeer *Peer) NewSendingChannel(publicKey *ecdsa.PublicKey) chan []byte
 			select {
 			case msg := <-messages:
 				if localPeer.running == 0 {
-
+					continue
 				}
 				s, err := localPeer.connectToPeer(publicKey)
 				if err != nil {
@@ -336,7 +352,7 @@ func (localPeer *Peer) NewSendingChannel(publicKey *ecdsa.PublicKey) chan []byte
 
 				err = communication.Write(s, msg)
 				if err != nil {
-					log.Errorf("Can't connect to peer %s. Removing from connected", publicKey)
+					log.Errorf("Can't connect to peer %s. Removing from connected", utils.PublicKeyToHexString(publicKey))
 					localPeer.removeFromConnected(publicKey)
 					continue
 				}

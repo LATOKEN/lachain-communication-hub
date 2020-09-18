@@ -10,6 +10,8 @@ import (
 	"io"
 	"lachain-communication-hub/peer"
 	"net"
+	"strings"
+	"time"
 
 	pb "lachain-communication-hub/grpc/protobuf"
 )
@@ -17,6 +19,8 @@ import (
 var log = loggo.GetLogger("server")
 
 var ZeroPub = make([]byte, 33)
+
+var serverStop = make(chan struct{})
 
 type Server struct {
 	pb.UnimplementedCommunicationHubServer
@@ -71,32 +75,60 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 		// exit if context is done
 		// or continue
 		select {
+		case <-serverStop:
+			return nil
 		case <-ctx.Done():
 			log.Errorf("Communication error: %s", ctx.Err())
 			return ctx.Err()
 		default:
 		}
 
-		// receive data from stream
-		req, err := stream.Recv()
-		if err == io.EOF {
-			// return will close stream from server side
-			log.Errorf("Communication error: %s", err)
-			return err
-		}
-		if err != nil {
-			log.Errorf("Communication error: %s", err)
-			return err
-		}
+		commErr := make(chan struct{})
+		result := make(chan struct{})
 
-		if bytes.Equal(req.PublicKey, ZeroPub) {
-			s.peer.BroadcastMessage(req.Data)
-		} else {
-			pub, err := crypto.DecompressPubkey(req.PublicKey)
-			if err != nil {
-				panic(err)
+		go func() {
+			// receive data from stream
+			req, err := stream.Recv()
+			if err == io.EOF {
+				// return will close stream from server side
+				log.Errorf("Communication error: %s", err)
+				close(commErr)
+				return
 			}
-			s.peer.SendMessageToPeer(pub, req.Data)
+			if err != nil {
+				if strings.Contains(err.Error(), "context canceled") {
+					log.Errorf("Communication closed")
+					close(commErr)
+					return
+				}
+
+				log.Errorf("Communication error: %s", err)
+				close(commErr)
+				return
+			}
+
+			if bytes.Equal(req.PublicKey, ZeroPub) {
+				s.peer.BroadcastMessage(req.Data)
+			} else {
+				pub, err := crypto.DecompressPubkey(req.PublicKey)
+				if err != nil {
+					panic(err)
+				}
+				s.peer.SendMessageToPeer(pub, req.Data)
+			}
+			close(result)
+		}()
+
+		t := time.NewTimer(5 * time.Second)
+
+		select {
+		case <-t.C:
+			continue
+		case <-result:
+			t.Stop()
+		case <-commErr:
+			t.Stop()
+			return nil
 		}
 	}
 }
@@ -126,5 +158,21 @@ func New(port string, p *peer.Peer) *Server {
 }
 
 func (s *Server) Stop() {
-	s.grpcServer.GracefulStop()
+
+	stopped := make(chan struct{})
+
+	go func() {
+		close(serverStop)
+		s.grpcServer.GracefulStop()
+		close(stopped)
+	}()
+
+	t := time.NewTimer(10 * time.Second)
+	select {
+	case <-t.C:
+		s.grpcServer.Stop()
+	case <-stopped:
+		log.Debugf("GRPC Server gracefully stopped")
+		t.Stop()
+	}
 }
