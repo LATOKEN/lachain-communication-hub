@@ -9,14 +9,14 @@ import (
 	circuit "github.com/libp2p/go-libp2p-circuit"
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p/config"
 	conf "lachain-communication-hub/config"
 	"lachain-communication-hub/types"
 	"os"
-	"strings"
 )
 
-var prvPathPrefix = "./prv"
+var prvPathPrefix = "./ChainLachain/prv"
 var log = loggo.GetLogger("builder")
 
 func GetPrivateKeyForHost(postfix string) crypto.PrivKey {
@@ -82,6 +82,8 @@ func BuildNamedHost(typ int, postfix string) core.Host {
 		return nil
 	}
 
+	myId, _ := peer.IDFromPrivateKey(GetPrivateKeyForHost(postfix))
+
 	switch typ {
 	case types.Peer:
 		externalIP := conf.GetP2PExternalIP()
@@ -91,9 +93,12 @@ func BuildNamedHost(typ int, postfix string) core.Host {
 		var listenAddrs libp2p.Option
 
 		// set port if we are bootstrap
-		if strings.Contains(conf.GetBootstrapMultiaddr().String(), externalIP) {
-			listenAddrs = libp2p.ListenAddrs(conf.GetBootstrapMultiaddr())
-		} else {
+		for i, id := range conf.GetBootstrapIDs() {
+			if id == myId {
+				listenAddrs = libp2p.ListenAddrs(conf.GetBootstrapMultiaddrs()[i])
+			}
+		}
+		if listenAddrs == nil {
 			listenAddrs = libp2p.ListenAddrs()
 		}
 		host, err := libp2p.New(

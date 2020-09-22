@@ -24,6 +24,8 @@ import (
 )
 
 const MaxTryToConnect = 3
+const TagConnection = "connection"
+const TagHub = "hub"
 
 var log = loggo.GetLogger("peer")
 
@@ -35,6 +37,7 @@ type Peer struct {
 	running        int32
 	msgChannels    map[string]chan []byte
 	PublicKey      *ecdsa.PublicKey
+	Signature      []byte
 }
 
 var globalQuit = make(chan struct{})
@@ -49,16 +52,19 @@ func New(id string) *Peer {
 	fmt.Println("my id:", localHost.ID())
 	fmt.Println("listening on:", localHost.Addrs())
 
-	// if we are not bootstrap
-	if config.GetBootstrapID() != localHost.ID() {
-		bootstrapInfo := peer.AddrInfo{
-			ID:    config.GetBootstrapID(),
-			Addrs: []ma.Multiaddr{config.GetBootstrapMultiaddr()},
-		}
+	mAddrs := config.GetBootstrapMultiaddrs()
+	for i, bootstrapId := range config.GetBootstrapIDs() {
+		// skip if we are bootstrap
+		if bootstrapId != localHost.ID() {
+			bootstrapInfo := peer.AddrInfo{
+				ID:    bootstrapId,
+				Addrs: []ma.Multiaddr{mAddrs[i]},
+			}
 
-		// Connect to bootstrap
-		if err := localHost.Connect(context.Background(), bootstrapInfo); err != nil {
-			panic(err)
+			// Connect to bootstrap
+			if err := localHost.Connect(context.Background(), bootstrapInfo); err != nil {
+				fmt.Errorf("%s", err)
+			}
 		}
 	}
 
@@ -70,39 +76,9 @@ func New(id string) *Peer {
 	localPeer.mutex = mut
 	localPeer.running = 1
 	localPeer.SetStreamHandlerFn(GRPCHandlerMock)
-	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(localPeer))
-	localPeer.host.SetStreamHandler("/getPeers", handleGetPeers)
-	localPeer.host.SetStreamHandler("/register", handleRegister)
+	localPeer.host.SetStreamHandler("/register", registerHandlerForLocalPeer(localPeer))
 
 	return localPeer
-}
-
-func (localPeer *Peer) Stop() {
-	localPeer.mutex.Lock()
-	defer localPeer.mutex.Unlock()
-
-	atomic.StoreInt32(&localPeer.running, 0)
-
-	for _, stream := range localPeer.streams {
-		stream.Close()
-	}
-	localPeer.streams = make(map[string]network.Stream)
-
-	if err := localPeer.host.ConnManager().Close(); err != nil {
-		panic(err)
-	}
-	if err := localPeer.host.Network().Close(); err != nil {
-		panic(err)
-	}
-	if err := localPeer.host.Peerstore().Close(); err != nil {
-		panic(err)
-	}
-	localPeer.host.RemoveStreamHandler("/getPeers")
-	localPeer.host.RemoveStreamHandler("/hub")
-	localPeer.host.RemoveStreamHandler("/register")
-	if err := localPeer.host.Close(); err != nil {
-		panic(err)
-	}
 }
 
 func (localPeer *Peer) Register(signature []byte) bool {
@@ -112,70 +88,68 @@ func (localPeer *Peer) Register(signature []byte) bool {
 		log.Errorf("%s", err)
 		return false
 	}
-	log.Debugf("localPubKey", utils.PublicKeyToHexString(localPublicKey))
+	log.Debugf("localPubKey %s", utils.PublicKeyToHexString(localPublicKey))
 	localPeer.SetPublicKey(localPublicKey)
-
-	bootstrap := &types.PeerConnection{
-		Id:   config.GetBootstrapID(),
-		Addr: config.GetBootstrapMultiaddr(),
-	}
-
-	if config.GetBootstrapID() == localPeer.host.ID() {
-		log.Debugf("We won't ask self, skipping registration")
-		return false
-	}
-
-	if err := localPeer.registerOnPeer(bootstrap, signature); err != nil {
-		log.Errorf("Can't register on bootstrap")
-	}
-
-	log.Debugf("registered on bootstrap")
-
-	bootstrapStream, err := localPeer.host.NewStream(context.Background(), config.GetBootstrapID(), "/getPeers")
-	if err != nil {
-		panic(err)
-	}
-
-	peersBytes, err := communication.ReadOnce(bootstrapStream)
-	if err != nil {
-		bootstrapStream.Close()
-		panic(err)
-	}
-	bootstrapStream.Close()
-
-	if string(peersBytes) == "0" {
-		log.Debugf("No peers received..")
-		return false
-	}
-
-	peerConnections := types.DecodeArray(peersBytes)
-
-	log.Debugf("Received %v peers", len(peerConnections))
+	localPeer.SetSignature(signature)
+	bootstrapMAddrs := config.GetBootstrapMultiaddrs()
 	connected := 0
-
-	for i, curr := range peerConnections {
-		// skip bootstrap and self connection
-		if curr.Id == localPeer.host.ID() || curr.Id == config.GetBootstrapID() {
+	for i, bootstrapId := range config.GetBootstrapIDs() {
+		log.Debugf("Bootstrap %v/%v", i+1, len(bootstrapMAddrs))
+		bootstrap := &types.PeerConnection{
+			Id:   bootstrapId,
+			Addr: bootstrapMAddrs[i],
+		}
+		if bootstrapId == localPeer.host.ID() {
+			log.Debugf("We won't ask self, skipping registration")
 			continue
 		}
-
-		log.Debugf("Registering on %v/%v", i+1, len(peerConnections))
-
-		// just store connection
-		storage.RegisterOrUpdatePeer(curr)
-
-		// register on external peer even if this one is behind NAT
-		if err := localPeer.registerOnPeer(curr, signature); err != nil {
-			continue
+		if err := localPeer.registerOnPeer(bootstrap, signature); err != nil {
+			log.Errorf("Can't register on bootstrap")
 		}
-
-		// refresh connection's timestamp
-		storage.UpdateRegisteredPeerById(curr.Id)
 		connected++
+		log.Debugf("registered on bootstrap")
+		bootstrapStream, err := localPeer.host.NewStream(context.Background(), bootstrapId, "/getPeers")
+		if err != nil {
+			log.Errorf("%s", err)
+			continue
+		}
+		peersBytes, err := communication.ReadOnce(bootstrapStream)
+		bootstrapStream.Close()
+		if err != nil {
+			log.Errorf("%s", err)
+			continue
+		}
+		if string(peersBytes) == "0" {
+			log.Debugf("No peers received..")
+			continue
+		}
+		peerConnections := types.DecodeArray(peersBytes)
+		log.Debugf("Received %v peers", len(peerConnections))
+		for i, curr := range peerConnections {
+			log.Debugf("Registering on %v/%v", i+1, len(peerConnections))
+			log.Debugf("Tag info %v", localPeer.host.ConnManager().GetTagInfo(curr.Id).Tags[TagConnection])
+			// skip bootstrap and self connection
+			if curr.Id == localPeer.host.ID() || curr.Id == bootstrapId || localPeer.host.ConnManager().GetTagInfo(curr.Id).Tags[TagConnection] != 0 {
+				continue
+			}
+			// just store connection
+			storage.RegisterOrUpdatePeer(curr)
+			// register on external peer even if this one is behind NAT
+			if err := localPeer.registerOnPeer(curr, signature); err != nil {
+				continue
+			}
 
+			localPeer.host.ConnManager().TagPeer(curr.Id, TagConnection, 1)
+			// refresh connection's timestamp
+			storage.UpdateRegisteredPeerById(curr.Id)
+			connected++
+		}
 	}
-
 	log.Debugf("Registered %v peers", connected)
+
+	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(localPeer))
+	localPeer.host.SetStreamHandler("/getPeers", getPeerHandlerForLocalPeer(localPeer))
+
 	return true
 }
 
@@ -250,6 +224,8 @@ func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream
 		return nil, err
 	}
 
+	localPeer.host.ConnManager().TagPeer(targetPeer.Id, TagHub, 1)
+
 	go func() {
 		for localPeer.running != 0 {
 			resp, err := localPeer.ReceiveResponseFromPeer(publicKey)
@@ -268,34 +244,6 @@ func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream
 
 	localPeer.streams[utils.PublicKeyToHexString(publicKey)] = hubStream
 	return hubStream, nil
-}
-
-func (localPeer *Peer) GetPeerPublicKeyById(peerId peer.ID) (string, error) {
-	relayStream, err := localPeer.host.NewStream(context.Background(), config.GetBootstrapID(), "/getPeerPublicKeyById")
-	if err != nil {
-		return "", err
-	}
-
-	peerIdBinary, err := peerId.MarshalBinary()
-	if err != nil {
-		return "", err
-	}
-
-	err = communication.Write(relayStream, peerIdBinary)
-	if err != nil {
-		relayStream.Close()
-		return "", err
-	}
-
-	peerPubKeyBytes, err := communication.ReadOnce(relayStream)
-	if err != nil {
-		relayStream.Close()
-		return "", err
-	}
-
-	relayStream.Close()
-
-	return string(peerPubKeyBytes), nil
 }
 
 func (localPeer *Peer) RegisterStream(publicKey *ecdsa.PublicKey, stream network.Stream) {
@@ -324,7 +272,7 @@ func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte)
 func (localPeer *Peer) BroadcastMessage(msg []byte) {
 	activePeers := storage.GetRecentPeers()
 	for _, peer := range activePeers {
-		if peer.PublicKey == nil {
+		if peer.PublicKey == nil || localPeer.host.ConnManager().GetTagInfo(peer.Id).Tags[TagConnection] != 0 {
 			continue
 		}
 		localPeer.SendMessageToPeer(peer.PublicKey, msg)
@@ -398,6 +346,10 @@ func (localPeer *Peer) SetPublicKey(publicKey *ecdsa.PublicKey) {
 	localPeer.PublicKey = publicKey
 }
 
+func (localPeer *Peer) SetSignature(signature []byte) {
+	localPeer.Signature = signature
+}
+
 func (localPeer *Peer) GetId() []byte {
 	id, err := localPeer.host.ID().Marshal()
 	if err != nil {
@@ -417,6 +369,8 @@ func (localPeer *Peer) removeFromConnected(publicKey *ecdsa.PublicKey) {
 	}
 
 	storage.RemoveConnection(peer.Id)
+	localPeer.host.ConnManager().UntagPeer(peer.Id, TagConnection)
+	localPeer.host.ConnManager().UntagPeer(peer.Id, TagHub)
 	if s, ok := localPeer.streams[utils.PublicKeyToHexString(publicKey)]; ok {
 		localPeer.host.Network().ClosePeer(s.Conn().RemotePeer())
 		s.Close()
@@ -562,17 +516,53 @@ func (localPeer *Peer) registerOnPeer(conn *types.PeerConnection, signature []by
 		}
 	}
 
-	resp, err := communication.ReadOnce(s)
+	remoteSignature, err := communication.ReadOnce(s)
 	if err != nil {
-		log.Errorf("cannot register: %s", err)
+		if err.Error() == "stream reset" {
+			log.Errorf("Connection closed by peer")
+			s.Close()
+			return err
+		}
+		log.Errorf("%s", err)
+		s.Close()
 		return err
 	}
 
-	if string(resp) != "1" {
-		log.Warningf("Cannot register on %s. Response: %s", conn.Id.Pretty(), string(resp))
+	remotePeerId, _ := s.Conn().RemotePeer().Marshal()
+	publicKey, err := utils.EcRecover(remotePeerId, remoteSignature)
+	if err != nil {
+		log.Errorf("%s", err)
+		s.Close()
 		return err
 	}
+
+	conn.PublicKey = publicKey
 
 	s.Close()
 	return nil
+}
+
+func (localPeer *Peer) Stop() {
+	localPeer.mutex.Lock()
+	defer localPeer.mutex.Unlock()
+	atomic.StoreInt32(&localPeer.running, 0)
+	for _, stream := range localPeer.streams {
+		stream.Close()
+	}
+	localPeer.streams = make(map[string]network.Stream)
+	if err := localPeer.host.ConnManager().Close(); err != nil {
+		panic(err)
+	}
+	if err := localPeer.host.Network().Close(); err != nil {
+		panic(err)
+	}
+	if err := localPeer.host.Peerstore().Close(); err != nil {
+		panic(err)
+	}
+	localPeer.host.RemoveStreamHandler("/getPeers")
+	localPeer.host.RemoveStreamHandler("/hub")
+	localPeer.host.RemoveStreamHandler("/register")
+	if err := localPeer.host.Close(); err != nil {
+		panic(err)
+	}
 }

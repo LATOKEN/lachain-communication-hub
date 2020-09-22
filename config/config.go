@@ -7,41 +7,52 @@ import (
 	"strings"
 )
 
-var RelayAddr = "/ip4/95.217.215.141/tcp/41011"
-var RelayId = "QmaAV3KD9vWhDfrWutZGXy8hMoVU2FtCMirPEPpUPHszAZ"
+var RelayAddrs = []string{}
+var RelayIds = []string{}
 var GRPCPort = ":50001"
 
 var ipLookup = true
 
-func SetBootstrapAddress(address string) {
-	var parts = strings.Split(address, "@")
-	if len(parts) != 2 {
-		panic("cannot parse address: " + address)
+func SetBootstrapAddress(addressesString string) {
+	var addresses = strings.Split(addressesString, ",")
+	for _, address := range addresses {
+		var parts = strings.Split(address, "@")
+		if len(parts) != 2 {
+			panic("cannot parse address: " + address)
+		}
+		var ipParts = strings.Split(parts[1], ":")
+		if len(ipParts) != 2 {
+			panic("cannot parse address: " + address)
+		}
+		RelayAddrs = append(RelayAddrs, "/ip4/"+ipParts[0]+"/tcp/"+ipParts[1])
+		RelayIds = append(RelayIds, parts[0])
 	}
-	var ipParts = strings.Split(parts[1], ":")
-	if len(ipParts) != 2 {
-		panic("cannot parse address: " + address)
-	}
-	RelayAddr = "/ip4/" + ipParts[0] + "/tcp/" + ipParts[1]
-	RelayId = parts[0]
 }
 
-func GetBootstrapMultiaddr() ma.Multiaddr {
-	relayMultiaddr, err := ma.NewMultiaddr(RelayAddr)
-	if err != nil {
-		panic(err)
+func GetBootstrapMultiaddrs() []ma.Multiaddr {
+	var multiAddrs []ma.Multiaddr
+	for _, addr := range RelayAddrs {
+		relayMultiaddr, err := ma.NewMultiaddr(addr)
+		if err != nil {
+			panic(err)
+		}
+		multiAddrs = append(multiAddrs, relayMultiaddr)
 	}
 
-	return relayMultiaddr
+	return multiAddrs
 }
 
-func GetBootstrapID() peer.ID {
-	id, err := peer.Decode(RelayId)
-	if err != nil {
-		panic(err)
+func GetBootstrapIDs() []peer.ID {
+	var ids []peer.ID
+	for _, relayId := range RelayIds {
+		id, err := peer.Decode(relayId)
+		if err != nil {
+			panic(err)
+		}
+		ids = append(ids, id)
 	}
 
-	return id
+	return ids
 }
 
 func DisableIpLookup() {

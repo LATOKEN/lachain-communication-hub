@@ -21,6 +21,18 @@ func incomingConnectionEstablishmentHandler(peer *Peer) func(s network.Stream) {
 	}
 }
 
+func getPeerHandlerForLocalPeer(localPeer *Peer) func(s network.Stream) {
+	return func(s network.Stream) {
+		handleGetPeers(localPeer, s)
+	}
+}
+
+func registerHandlerForLocalPeer(localPeer *Peer) func(s network.Stream) {
+	return func(s network.Stream) {
+		handleRegister(localPeer, s)
+	}
+}
+
 func handleHubMessage(peer *Peer, s network.Stream) {
 	remotePeerId := s.Conn().RemotePeer()
 	connectionExists := peer.IsStreamWithPeerRegistered(remotePeerId)
@@ -92,8 +104,7 @@ func processMessage(localPeer *Peer, s network.Stream, msg []byte) error {
 	return nil
 }
 
-func handleRegister(s network.Stream) {
-
+func handleRegister(localPeer *Peer, s network.Stream) {
 	log.Debugf("Peer registration")
 
 	peerId, _ := s.Conn().RemotePeer().Marshal()
@@ -105,7 +116,9 @@ func handleRegister(s network.Stream) {
 			s.Close()
 			return
 		}
-		panic(err)
+		log.Errorf("%s", err)
+		s.Close()
+		return
 	}
 
 	publicKey, err := utils.EcRecover(peerId, signature)
@@ -122,7 +135,9 @@ func handleRegister(s network.Stream) {
 			s.Close()
 			return
 		}
-		panic(err)
+		log.Errorf("%s", err)
+		s.Close()
+		return
 	}
 
 	mAddr, _ := ma.NewMultiaddrBytes(mAddrBytes)
@@ -133,18 +148,20 @@ func handleRegister(s network.Stream) {
 		LastSeen:  uint32(time.Now().Unix()),
 		Addr:      mAddr,
 	}
-	storage.RegisterOrUpdatePeer(regPeer)
-	err = communication.Write(s, []byte("1"))
 
+	err = communication.Write(s, localPeer.Signature)
 	if err != nil {
 		log.Errorf("%s", err)
+		s.Close()
 		return
 	}
+
+	storage.RegisterOrUpdatePeer(regPeer)
 
 	s.Close()
 }
 
-func handleGetPeers(s network.Stream) {
+func handleGetPeers(localPeer *Peer, s network.Stream) {
 
 	peerConnections := storage.GetRecentPeers()
 
@@ -164,6 +181,9 @@ func handleGetPeers(s network.Stream) {
 	var peersBytes []byte
 
 	for _, peerConn := range peerConnections {
+		if localPeer.host.ConnManager().GetTagInfo(peerConn.Id).Tags[TagHub] == 0 {
+			continue
+		}
 		peersBytes = append(peersBytes, peerConn.Encode()...)
 	}
 
