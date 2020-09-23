@@ -81,6 +81,10 @@ func New(id string) *Peer {
 	return localPeer
 }
 
+func KeyGen(count int) {
+	host.GenerateKey(count)
+}
+
 func (localPeer *Peer) Register(signature []byte) bool {
 	peerId, _ := localPeer.host.ID().Marshal()
 	localPublicKey, err := utils.EcRecover(peerId, signature)
@@ -105,6 +109,7 @@ func (localPeer *Peer) Register(signature []byte) bool {
 		}
 		if err := localPeer.registerOnPeer(bootstrap, signature); err != nil {
 			log.Errorf("Can't register on bootstrap")
+			continue
 		}
 		connected++
 		log.Debugf("registered on bootstrap")
@@ -129,7 +134,7 @@ func (localPeer *Peer) Register(signature []byte) bool {
 			log.Debugf("Registering on %v/%v", i+1, len(peerConnections))
 			log.Debugf("Tag info %v", localPeer.host.ConnManager().GetTagInfo(curr.Id).Tags[TagConnection])
 			// skip bootstrap and self connection
-			if curr.Id == localPeer.host.ID() || curr.Id == bootstrapId || localPeer.host.ConnManager().GetTagInfo(curr.Id).Tags[TagConnection] != 0 {
+			if curr.Id == localPeer.host.ID() || curr.Id == bootstrapId || localPeer.host.ConnManager().GetTagInfo(curr.Id).Tags[TagConnection] != 0 || curr.PublicKey == nil {
 				continue
 			}
 			// just store connection
@@ -254,6 +259,7 @@ func (localPeer *Peer) RegisterStream(publicKey *ecdsa.PublicKey, stream network
 
 func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte) {
 	log.Tracef("Sending message to peer %s message length %d", utils.PublicKeyToHexString(publicKey), len(msg))
+
 	localPeer.mutex.Lock()
 	msgChannel, ok := localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)]
 	localPeer.mutex.Unlock()
@@ -261,11 +267,7 @@ func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte)
 	if ok {
 		msgChannel <- msg
 	} else {
-		msgChannel = localPeer.NewSendingChannel(publicKey)
-		localPeer.mutex.Lock()
-		localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)] = msgChannel
-		localPeer.mutex.Unlock()
-		msgChannel <- msg
+		log.Tracef("No connection with peer: %s", utils.PublicKeyToHexString(publicKey))
 	}
 }
 
@@ -279,15 +281,19 @@ func (localPeer *Peer) BroadcastMessage(msg []byte) {
 	}
 }
 
-func (localPeer *Peer) NewSendingChannel(publicKey *ecdsa.PublicKey) chan []byte {
-	messages := make(chan []byte)
+func (localPeer *Peer) NewMsgChannel(publicKey *ecdsa.PublicKey) chan []byte {
+	msgChannel := make(chan []byte)
 
 	fmt.Println("new msg channel for", utils.PublicKeyToHexString(publicKey))
 
 	go func() {
 		for {
 			select {
-			case msg := <-messages:
+			case msg := <-msgChannel:
+				if len(msg) == 0 {
+					log.Debugf("Closing msg channel for %s", utils.PublicKeyToHexString(publicKey))
+					return
+				}
 				if localPeer.running == 0 {
 					continue
 				}
@@ -295,6 +301,7 @@ func (localPeer *Peer) NewSendingChannel(publicKey *ecdsa.PublicKey) chan []byte
 				if err != nil {
 					log.Errorf("Can't establish connection with: %s", utils.PublicKeyToHexString(publicKey))
 					log.Errorf("%s", err)
+					localPeer.removeFromConnected(publicKey)
 					continue
 				}
 
@@ -307,10 +314,11 @@ func (localPeer *Peer) NewSendingChannel(publicKey *ecdsa.PublicKey) chan []byte
 				storage.UpdateRegisteredPeerByPublicKey(publicKey)
 			case <-globalQuit:
 				fmt.Println("quiting", utils.PublicKeyToHexString(publicKey))
+			default:
 			}
 		}
 	}()
-	return messages
+	return msgChannel
 }
 
 func (localPeer *Peer) ReceiveResponseFromPeer(publicKey *ecdsa.PublicKey) ([]byte, error) {
@@ -376,6 +384,10 @@ func (localPeer *Peer) removeFromConnected(publicKey *ecdsa.PublicKey) {
 		s.Close()
 		delete(localPeer.streams, utils.PublicKeyToHexString(publicKey))
 	}
+	if ch, ok := localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)]; ok {
+		close(ch)
+		delete(localPeer.msgChannels, utils.PublicKeyToHexString(publicKey))
+	}
 }
 
 func (localPeer *Peer) GetExternalMultiAddress() (ma.Multiaddr, error) {
@@ -400,15 +412,18 @@ func (localPeer *Peer) GetStream(pubKey *ecdsa.PublicKey) (network.Stream, bool)
 	return s, ok
 }
 
-func (localPeer *Peer) IsStreamWithPeerRegistered(peerId peer.ID) bool {
+func (localPeer *Peer) IsConnected(publicKey *ecdsa.PublicKey) bool {
 	localPeer.mutex.Lock()
 	defer localPeer.mutex.Unlock()
-	for _, s := range localPeer.streams {
-		if s.Conn().RemotePeer() == peerId {
-			return true
-		}
-	}
-	return false
+	_, exist := localPeer.streams[utils.PublicKeyToHexString(publicKey)]
+	return exist
+}
+
+func (localPeer *Peer) IsMsgChannelExist(publicKey *ecdsa.PublicKey) bool {
+	localPeer.mutex.Lock()
+	defer localPeer.mutex.Unlock()
+	_, exist := localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)]
+	return exist
 }
 
 func (localPeer *Peer) establishDirectConnection(targetPeer *types.PeerConnection) error {
@@ -539,6 +554,11 @@ func (localPeer *Peer) registerOnPeer(conn *types.PeerConnection, signature []by
 	conn.PublicKey = publicKey
 
 	s.Close()
+
+	msgChannel := localPeer.NewMsgChannel(publicKey)
+	localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)] = msgChannel
+
+	fmt.Println("Registered on peer")
 	return nil
 }
 

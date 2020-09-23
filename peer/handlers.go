@@ -35,17 +35,23 @@ func registerHandlerForLocalPeer(localPeer *Peer) func(s network.Stream) {
 
 func handleHubMessage(peer *Peer, s network.Stream) {
 	remotePeerId := s.Conn().RemotePeer()
-	connectionExists := peer.IsStreamWithPeerRegistered(remotePeerId)
-
 	remotePeer, err := storage.GetPeerById(remotePeerId)
 	if err != nil {
 		log.Warningf("Peer not found with id %s", remotePeerId)
 		s.Close()
 		return
 	}
-
-	if !connectionExists {
+	streamRegistered := peer.IsConnected(remotePeer.PublicKey)
+	if !streamRegistered {
 		peer.RegisterStream(remotePeer.PublicKey, s)
+	}
+
+	msgChannelExist := peer.IsMsgChannelExist(remotePeer.PublicKey)
+	if !msgChannelExist {
+		msgChannel := peer.NewMsgChannel(remotePeer.PublicKey)
+		peer.mutex.Lock()
+		peer.msgChannels[utils.PublicKeyToHexString(remotePeer.PublicKey)] = msgChannel
+		peer.mutex.Unlock()
 	}
 
 	for {
@@ -55,19 +61,17 @@ func handleHubMessage(peer *Peer, s network.Stream) {
 		if err != nil {
 			if err == io.EOF {
 				handler.Errorf("connection reset")
-
-				time.Sleep(2 * time.Second)
+				peer.removeFromConnected(remotePeer.PublicKey)
 				return
 			}
 			handler.Errorf("Can't read message. Closing connection")
 			handler.Errorf("%s", err)
-			s.Close()
+			peer.removeFromConnected(remotePeer.PublicKey)
 			return
 		}
 		err = processMessage(peer, s, msg)
 		if err != nil {
 			handler.Errorf("Connection problem")
-			s.Close()
 			peer.removeFromConnected(remotePeer.PublicKey)
 			return
 		}

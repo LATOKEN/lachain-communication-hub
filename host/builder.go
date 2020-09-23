@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"github.com/juju/loggo"
 	"github.com/libp2p/go-libp2p"
 	circuit "github.com/libp2p/go-libp2p-circuit"
@@ -14,6 +15,7 @@ import (
 	conf "lachain-communication-hub/config"
 	"lachain-communication-hub/types"
 	"os"
+	"strconv"
 )
 
 var prvPathPrefix = "./ChainLachain/prv"
@@ -23,7 +25,6 @@ func GetPrivateKeyForHost(postfix string) crypto.PrivKey {
 	var prv crypto.PrivKey
 	prvPath := prvPathPrefix + postfix + ".txt"
 	if _, err := os.Stat(prvPath); os.IsNotExist(err) {
-		log.Debugf("Generating private key")
 		prv, _, err = crypto.GenerateECDSAKeyPair(rand.Reader)
 		if err != nil {
 			panic(err)
@@ -41,11 +42,10 @@ func GetPrivateKeyForHost(postfix string) crypto.PrivKey {
 			panic(err)
 		}
 
-		n3, err := f.WriteString(prvHex)
+		_, err = f.WriteString(prvHex)
 		if err != nil {
 			panic(err)
 		}
-		log.Tracef("wrote %d bytes\n", n3)
 
 		f.Sync()
 		f.Close()
@@ -73,6 +73,14 @@ func GetPrivateKeyForHost(postfix string) crypto.PrivKey {
 	}
 
 	return prv
+}
+
+func GenerateKey(count int) {
+	prvPathPrefix = "./prv_"
+	for i := 1; i <= count; i++ {
+		myId, _ := peer.IDFromPrivateKey(GetPrivateKeyForHost("h" + strconv.Itoa(i)))
+		fmt.Println(strconv.Itoa(i) + ". " + myId.Pretty())
+	}
 }
 
 func BuildNamedHost(typ int, postfix string) core.Host {
