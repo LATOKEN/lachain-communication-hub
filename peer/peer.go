@@ -262,11 +262,12 @@ func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte)
 
 	localPeer.mutex.Lock()
 	msgChannel, ok := localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)]
-	localPeer.mutex.Unlock()
 
 	if ok {
 		msgChannel <- msg
+		localPeer.mutex.Unlock()
 	} else {
+		localPeer.mutex.Unlock()
 		log.Tracef("No connection with peer: %s", utils.PublicKeyToHexString(publicKey))
 	}
 }
