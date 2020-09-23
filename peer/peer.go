@@ -76,7 +76,6 @@ func New(id string) *Peer {
 	localPeer.mutex = mut
 	localPeer.running = 1
 	localPeer.SetStreamHandlerFn(GRPCHandlerMock)
-	localPeer.host.SetStreamHandler("/register", registerHandlerForLocalPeer(localPeer))
 
 	return localPeer
 }
@@ -152,6 +151,7 @@ func (localPeer *Peer) Register(signature []byte) bool {
 	}
 	log.Debugf("Registered %v peers", connected)
 
+	localPeer.host.SetStreamHandler("/register", registerHandlerForLocalPeer(localPeer))
 	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(localPeer))
 	localPeer.host.SetStreamHandler("/getPeers", getPeerHandlerForLocalPeer(localPeer))
 
