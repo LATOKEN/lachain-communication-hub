@@ -48,9 +48,8 @@ func GRPCHandlerMock([]byte) {
 
 func New(id string) *Peer {
 	localHost := host.BuildNamedHost(types.Peer, id)
-
-	fmt.Println("my id:", localHost.ID())
-	fmt.Println("listening on:", localHost.Addrs())
+	log.Infof("my id:", localHost.ID())
+	log.Infof("listening on:", localHost.Addrs())
 
 	mAddrs := config.GetBootstrapMultiaddrs()
 	for i, bootstrapId := range config.GetBootstrapIDs() {
@@ -63,7 +62,7 @@ func New(id string) *Peer {
 
 			// Connect to bootstrap
 			if err := localHost.Connect(context.Background(), bootstrapInfo); err != nil {
-				fmt.Errorf("%s", err)
+				log.Errorf("%s", err)
 			}
 		}
 	}
@@ -107,7 +106,7 @@ func (localPeer *Peer) Register(signature []byte) bool {
 			continue
 		}
 		if err := localPeer.registerOnPeer(bootstrap, signature); err != nil {
-			log.Errorf("Can't register on bootstrap")
+			log.Errorf("Can't register on bootstrap: %s", err)
 			continue
 		}
 		connected++
@@ -285,7 +284,7 @@ func (localPeer *Peer) BroadcastMessage(msg []byte) {
 func (localPeer *Peer) NewMsgChannel(publicKey *ecdsa.PublicKey) chan []byte {
 	msgChannel := make(chan []byte)
 
-	fmt.Println("new msg channel for", utils.PublicKeyToHexString(publicKey))
+	log.Tracef("new msg channel for", utils.PublicKeyToHexString(publicKey))
 
 	go func() {
 		for {
@@ -314,7 +313,7 @@ func (localPeer *Peer) NewMsgChannel(publicKey *ecdsa.PublicKey) chan []byte {
 				}
 				storage.UpdateRegisteredPeerByPublicKey(publicKey)
 			case <-globalQuit:
-				fmt.Println("quiting", utils.PublicKeyToHexString(publicKey))
+				log.Infof("quiting", utils.PublicKeyToHexString(publicKey))
 			default:
 			}
 		}
@@ -559,7 +558,7 @@ func (localPeer *Peer) registerOnPeer(conn *types.PeerConnection, signature []by
 	msgChannel := localPeer.NewMsgChannel(publicKey)
 	localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)] = msgChannel
 
-	fmt.Println("Registered on peer")
+	log.Debugf("Registered on peer")
 	return nil
 }
 
