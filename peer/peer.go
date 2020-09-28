@@ -97,8 +97,6 @@ func (localPeer *Peer) Register(signature []byte) bool {
 	localPeer.SetSignature(signature)
 	bootstrapMAddrs := config.GetBootstrapMultiaddrs()
 	connected := 0
-	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(localPeer))
-	localPeer.host.SetStreamHandler("/getPeers", getPeerHandlerForLocalPeer(localPeer))
 	for i, bootstrapId := range config.GetBootstrapIDs() {
 		log.Debugf("Bootstrap %v/%v", i+1, len(bootstrapMAddrs))
 		bootstrap := &types.PeerConnection{
@@ -152,6 +150,8 @@ func (localPeer *Peer) Register(signature []byte) bool {
 			connected++
 		}
 	}
+	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(localPeer))
+	localPeer.host.SetStreamHandler("/getPeers", getPeerHandlerForLocalPeer(localPeer))
 	log.Debugf("Registered %v peers", connected)
 
 	return true

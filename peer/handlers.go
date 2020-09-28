@@ -109,6 +109,13 @@ func processMessage(localPeer *Peer, s network.Stream, msg []byte) error {
 }
 
 func handleRegister(localPeer *Peer, s network.Stream) {
+
+	if localPeer.Signature == nil {
+		log.Debugf("We don't have signature yet, skipping registration")
+		s.Close()
+		return
+	}
+
 	log.Debugf("Peer registration")
 
 	peerId, _ := s.Conn().RemotePeer().Marshal()

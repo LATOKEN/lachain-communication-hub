@@ -3,6 +3,7 @@ package grpc
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
@@ -106,6 +107,8 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 				close(commErr)
 				return
 			}
+
+			log.Tracef("GRPC command to send message to %s", hex.EncodeToString(req.PublicKey))
 
 			if bytes.Equal(req.PublicKey, ZeroPub) {
 				s.peer.BroadcastMessage(req.Data)

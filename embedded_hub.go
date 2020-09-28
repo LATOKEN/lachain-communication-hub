@@ -29,6 +29,7 @@ func LogLevel(s *C.char, len C.int) {
 
 //export StopHub
 func StopHub() {
+	fmt.Println("Exit received")
 	localPeer.Stop()
 	grpcServer.Stop()
 }
