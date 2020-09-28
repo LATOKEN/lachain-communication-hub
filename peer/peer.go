@@ -331,7 +331,7 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey *ecdsa.PublicKey) ([]by
 		return nil, errors.New("not found")
 	}
 
-	log.Tracef("Received msg from peer (we are conn initiator) %s", s.Conn().RemotePeer().Pretty())
+	log.Tracef("Received msg from peer (we are conn initiator) %s", utils.PublicKeyToHexString(publicKey))
 
 	msg, err := communication.ReadOnce(s)
 	if err != nil {

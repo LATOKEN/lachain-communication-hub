@@ -2,6 +2,7 @@ package main
 
 import "C"
 import (
+	"fmt"
 	"github.com/juju/loggo"
 	"lachain-communication-hub/config"
 	server "lachain-communication-hub/grpc"

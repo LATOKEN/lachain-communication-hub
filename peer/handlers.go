@@ -56,7 +56,7 @@ func handleHubMessage(peer *Peer, s network.Stream) {
 
 	for {
 		msg, err := communication.ReadOnce(s)
-		log.Tracef("Received msg from peer %s", s.Conn().RemotePeer().Pretty())
+		log.Tracef("Received msg from peer %s", utils.PublicKeyToHexString(remotePeer.PublicKey))
 
 		if err != nil {
 			if err == io.EOF {
