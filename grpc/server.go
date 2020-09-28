@@ -96,6 +96,7 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 				close(commErr)
 				return
 			}
+			close(result)
 			if err != nil {
 				if strings.Contains(err.Error(), "context canceled") {
 					log.Errorf("Communication closed")
@@ -119,7 +120,6 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 				}
 				s.peer.SendMessageToPeer(pub, req.Data)
 			}
-			close(result)
 		}()
 
 		t := time.NewTimer(5 * time.Second)
@@ -129,6 +129,7 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 			continue
 		case <-result:
 			t.Stop()
+			continue
 		case <-commErr:
 			t.Stop()
 			return nil

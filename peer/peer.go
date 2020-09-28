@@ -158,8 +158,8 @@ func (localPeer *Peer) Register(signature []byte) bool {
 }
 
 func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream, error) {
-	localPeer.mutex.Lock()
-	defer localPeer.mutex.Unlock()
+	localPeer.lock()
+	defer localPeer.unlock()
 
 	if localPeer.running == 0 {
 		return nil, errors.New("not running")
@@ -251,22 +251,29 @@ func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream
 }
 
 func (localPeer *Peer) RegisterStream(publicKey *ecdsa.PublicKey, stream network.Stream) {
-	localPeer.mutex.Lock()
-	defer localPeer.mutex.Unlock()
+	localPeer.lock()
+	defer localPeer.unlock()
 	localPeer.streams[utils.PublicKeyToHexString(publicKey)] = stream
 }
 
 func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte) {
 	log.Tracef("Sending message to peer %s message length %d", utils.PublicKeyToHexString(publicKey), len(msg))
 
-	localPeer.mutex.Lock()
+	localPeer.lock()
 	msgChannel, ok := localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)]
+	localPeer.unlock()
 
 	if ok {
+		defer func() {
+			// recover from panic caused by writing to a closed channel
+			if r := recover(); r != nil {
+				err := fmt.Errorf("%v", r)
+				fmt.Printf("write: error writing on channel: %v\n", err)
+				return
+			}
+		}()
 		msgChannel <- msg
-		localPeer.mutex.Unlock()
 	} else {
-		localPeer.mutex.Unlock()
 		log.Tracef("No connection with peer: %s", utils.PublicKeyToHexString(publicKey))
 	}
 }
@@ -294,9 +301,12 @@ func (localPeer *Peer) NewMsgChannel(publicKey *ecdsa.PublicKey) chan []byte {
 					log.Debugf("Closing msg channel for %s", utils.PublicKeyToHexString(publicKey))
 					return
 				}
+				localPeer.lock()
 				if localPeer.running == 0 {
+					localPeer.unlock()
 					continue
 				}
+				localPeer.unlock()
 				s, err := localPeer.connectToPeer(publicKey)
 				if err != nil {
 					log.Errorf("Can't establish connection with: %s", utils.PublicKeyToHexString(publicKey))
@@ -322,9 +332,12 @@ func (localPeer *Peer) NewMsgChannel(publicKey *ecdsa.PublicKey) chan []byte {
 }
 
 func (localPeer *Peer) ReceiveResponseFromPeer(publicKey *ecdsa.PublicKey) ([]byte, error) {
+	localPeer.lock()
 	if localPeer.running == 0 {
+		localPeer.unlock()
 		return nil, nil
 	}
+	localPeer.unlock()
 	s, ok := localPeer.GetStream(publicKey)
 	if !ok {
 		log.Errorf("Connection not found with %s", publicKey)
@@ -367,8 +380,6 @@ func (localPeer *Peer) GetId() []byte {
 }
 
 func (localPeer *Peer) removeFromConnected(publicKey *ecdsa.PublicKey) {
-	localPeer.mutex.Lock()
-	defer localPeer.mutex.Unlock()
 
 	peer, err := storage.GetPeerByPublicKey(publicKey)
 	if err != nil {
@@ -376,6 +387,8 @@ func (localPeer *Peer) removeFromConnected(publicKey *ecdsa.PublicKey) {
 		return
 	}
 
+	localPeer.lock()
+	defer localPeer.unlock()
 	storage.RemoveConnection(peer.Id)
 	localPeer.host.ConnManager().UntagPeer(peer.Id, TagConnection)
 	localPeer.host.ConnManager().UntagPeer(peer.Id, TagHub)
@@ -406,22 +419,22 @@ func (localPeer *Peer) GetExternalMultiAddress() (ma.Multiaddr, error) {
 }
 
 func (localPeer *Peer) GetStream(pubKey *ecdsa.PublicKey) (network.Stream, bool) {
-	localPeer.mutex.Lock()
-	defer localPeer.mutex.Unlock()
+	localPeer.lock()
+	defer localPeer.unlock()
 	s, ok := localPeer.streams[utils.PublicKeyToHexString(pubKey)]
 	return s, ok
 }
 
 func (localPeer *Peer) IsConnected(publicKey *ecdsa.PublicKey) bool {
-	localPeer.mutex.Lock()
-	defer localPeer.mutex.Unlock()
+	localPeer.lock()
+	defer localPeer.unlock()
 	_, exist := localPeer.streams[utils.PublicKeyToHexString(publicKey)]
 	return exist
 }
 
 func (localPeer *Peer) IsMsgChannelExist(publicKey *ecdsa.PublicKey) bool {
-	localPeer.mutex.Lock()
-	defer localPeer.mutex.Unlock()
+	localPeer.lock()
+	defer localPeer.unlock()
 	_, exist := localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)]
 	return exist
 }
@@ -562,27 +575,44 @@ func (localPeer *Peer) registerOnPeer(conn *types.PeerConnection, signature []by
 	return nil
 }
 
-func (localPeer *Peer) Stop() {
+func (localPeer *Peer) lock() {
 	localPeer.mutex.Lock()
-	defer localPeer.mutex.Unlock()
+}
+
+func (localPeer *Peer) unlock() {
+	localPeer.mutex.Unlock()
+}
+
+func (localPeer *Peer) Stop() {
+	localPeer.lock()
+	defer localPeer.unlock()
 	atomic.StoreInt32(&localPeer.running, 0)
+	streamsLen := len(localPeer.streams)
+	i := 0
 	for _, stream := range localPeer.streams {
 		stream.Close()
+		i++
+		log.Debugf("Stream closed %v/%v", i, streamsLen)
 	}
-	localPeer.streams = make(map[string]network.Stream)
+	localPeer.streams = nil
 	if err := localPeer.host.ConnManager().Close(); err != nil {
 		panic(err)
 	}
+	log.Debugf("Closed ConnManager")
 	if err := localPeer.host.Network().Close(); err != nil {
 		panic(err)
 	}
+	log.Debugf("Closed Network")
 	if err := localPeer.host.Peerstore().Close(); err != nil {
 		panic(err)
 	}
+	log.Debugf("Closed Peerstore")
 	localPeer.host.RemoveStreamHandler("/getPeers")
 	localPeer.host.RemoveStreamHandler("/hub")
 	localPeer.host.RemoveStreamHandler("/register")
+	log.Debugf("Removed Handlers")
 	if err := localPeer.host.Close(); err != nil {
 		panic(err)
 	}
+	log.Debugf("closed host")
 }
