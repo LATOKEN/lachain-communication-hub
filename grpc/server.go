@@ -118,7 +118,7 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 				if err != nil {
 					panic(err)
 				}
-				s.peer.SendMessageToPeer(pub, req.Data)
+				s.peer.SendMessageToPeer(pub, req.Data, true)
 			}
 		}()
 

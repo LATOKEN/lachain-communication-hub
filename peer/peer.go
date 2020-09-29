@@ -48,8 +48,8 @@ func GRPCHandlerMock([]byte) {
 
 func New(id string) *Peer {
 	localHost := host.BuildNamedHost(types.Peer, id)
-	log.Infof("my id:", localHost.ID())
-	log.Infof("listening on:", localHost.Addrs())
+	log.Infof("my id: %s", localHost.ID())
+	log.Infof("listening on: %s", localHost.Addrs())
 
 	mAddrs := config.GetBootstrapMultiaddrs()
 	for i, bootstrapId := range config.GetBootstrapIDs() {
@@ -78,11 +78,28 @@ func New(id string) *Peer {
 
 	localPeer.host.SetStreamHandler("/register", registerHandlerForLocalPeer(localPeer))
 
+	localPeer.startOldMsgCleaner()
+
 	return localPeer
 }
 
 func KeyGen(count int) {
 	host.GenerateKey(count)
+}
+
+func (localPeer *Peer) startOldMsgCleaner() {
+	ticker := time.NewTicker(30 * time.Minute)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				storage.ClearOldPostponedMessages()
+			case <-globalQuit:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
 }
 
 func (localPeer *Peer) Register(signature []byte) bool {
@@ -256,7 +273,7 @@ func (localPeer *Peer) RegisterStream(publicKey *ecdsa.PublicKey, stream network
 	localPeer.streams[utils.PublicKeyToHexString(publicKey)] = stream
 }
 
-func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte) {
+func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte, ensureSent bool) (result bool) {
 	log.Tracef("Sending message to peer %s message length %d", utils.PublicKeyToHexString(publicKey), len(msg))
 
 	localPeer.lock()
@@ -269,13 +286,25 @@ func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte)
 			if r := recover(); r != nil {
 				err := fmt.Errorf("%v", r)
 				fmt.Printf("write: error writing on channel: %v\n", err)
-				return
+				result = false
+				if ensureSent {
+					localPeer.storeMsgForFutureSend(publicKey, msg)
+				}
 			}
 		}()
 		msgChannel <- msg
+		return true
 	} else {
+		if ensureSent {
+			localPeer.storeMsgForFutureSend(publicKey, msg)
+		}
 		log.Tracef("No connection with peer: %s", utils.PublicKeyToHexString(publicKey))
+		return false
 	}
+}
+
+func (localPeer *Peer) storeMsgForFutureSend(publicKey *ecdsa.PublicKey, msg []byte) {
+	storage.StoreMessageToSendOnConnect(publicKey, msg)
 }
 
 func (localPeer *Peer) BroadcastMessage(msg []byte) {
@@ -284,7 +313,7 @@ func (localPeer *Peer) BroadcastMessage(msg []byte) {
 		if peer.PublicKey == nil || localPeer.host.ConnManager().GetTagInfo(peer.Id).Tags[TagConnection] != 0 {
 			continue
 		}
-		localPeer.SendMessageToPeer(peer.PublicKey, msg)
+		localPeer.SendMessageToPeer(peer.PublicKey, msg, false)
 	}
 }
 
@@ -323,7 +352,8 @@ func (localPeer *Peer) NewMsgChannel(publicKey *ecdsa.PublicKey) chan []byte {
 				}
 				storage.UpdateRegisteredPeerByPublicKey(publicKey)
 			case <-globalQuit:
-				log.Infof("quiting", utils.PublicKeyToHexString(publicKey))
+				log.Infof("will no longer receive msgs from %s", utils.PublicKeyToHexString(publicKey))
+				return
 			default:
 			}
 		}
@@ -571,8 +601,24 @@ func (localPeer *Peer) registerOnPeer(conn *types.PeerConnection, signature []by
 	msgChannel := localPeer.NewMsgChannel(publicKey)
 	localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)] = msgChannel
 
-	log.Debugf("Registered on peer")
+	localPeer.SendPostponedMessages(publicKey)
+
+	log.Debugf("Registered on peer %s", utils.PublicKeyToHexString(publicKey))
 	return nil
+}
+
+func (localPeer *Peer) SendPostponedMessages(publicKey *ecdsa.PublicKey) {
+	messages := storage.GetPostponedMessages(publicKey)
+	if len(messages) == 0 {
+		return
+	}
+	for _, msg := range messages {
+		if !localPeer.SendMessageToPeer(publicKey, msg, false) {
+			return
+		}
+	}
+	storage.RemovePostponedMessages(publicKey)
+	log.Debugf("Sent %v postponed messages to %s", len(messages), utils.PublicKeyToHexString(publicKey))
 }
 
 func (localPeer *Peer) lock() {
@@ -585,6 +631,7 @@ func (localPeer *Peer) unlock() {
 
 func (localPeer *Peer) Stop() {
 	localPeer.lock()
+	close(globalQuit)
 	defer localPeer.unlock()
 	atomic.StoreInt32(&localPeer.running, 0)
 	streamsLen := len(localPeer.streams)

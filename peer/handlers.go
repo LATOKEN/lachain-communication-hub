@@ -17,7 +17,7 @@ var handler = loggo.GetLogger("handler")
 func incomingConnectionEstablishmentHandler(peer *Peer) func(s network.Stream) {
 	log.Tracef("Incoming connection handler set")
 	return func(s network.Stream) {
-		handleHubMessage(peer, s)
+		handleHubConnection(peer, s)
 	}
 }
 
@@ -33,7 +33,7 @@ func registerHandlerForLocalPeer(localPeer *Peer) func(s network.Stream) {
 	}
 }
 
-func handleHubMessage(peer *Peer, s network.Stream) {
+func handleHubConnection(peer *Peer, s network.Stream) {
 	remotePeerId := s.Conn().RemotePeer()
 	remotePeer, err := storage.GetPeerById(remotePeerId)
 	if err != nil {
@@ -53,6 +53,8 @@ func handleHubMessage(peer *Peer, s network.Stream) {
 		peer.msgChannels[utils.PublicKeyToHexString(remotePeer.PublicKey)] = msgChannel
 		peer.mutex.Unlock()
 	}
+
+	peer.SendPostponedMessages(remotePeer.PublicKey)
 
 	for {
 		msg, err := communication.ReadOnce(s)

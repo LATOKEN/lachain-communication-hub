@@ -15,6 +15,8 @@ import (
 
 var log = loggo.GetLogger("storage")
 
+const messageExpirationTime = 30 * 60
+
 type peersWithMutex struct {
 	peers []*types.PeerConnection
 	mutex *sync.Mutex
@@ -25,6 +27,12 @@ type validatorsWithMutex struct {
 	mutex      *sync.Mutex
 }
 
+type postponedMessagesWithMutex struct {
+	messages   map[string][][]byte
+	lastUpdate map[string]int64
+	mutex      *sync.Mutex
+}
+
 type currentConnectionsWithMutex struct {
 	ids   []peer.ID
 	mutex *sync.Mutex
@@ -32,7 +40,14 @@ type currentConnectionsWithMutex struct {
 
 var peersMu = peersWithMutex{mutex: &sync.Mutex{}}
 var validatorsMu = validatorsWithMutex{mutex: &sync.Mutex{}}
-var derectConnectionsMu = currentConnectionsWithMutex{mutex: &sync.Mutex{}}
+var derectConnectionsMu = currentConnectionsWithMutex{
+	mutex: &sync.Mutex{},
+}
+var postponedMessagesMu = postponedMessagesWithMutex{
+	messages:   make(map[string][][]byte),
+	lastUpdate: make(map[string]int64),
+	mutex:      &sync.Mutex{},
+}
 
 func GetPeerByPublicKey(publicKey *ecdsa.PublicKey) (*types.PeerConnection, error) {
 	peersMu.mutex.Lock()
@@ -51,6 +66,40 @@ func GetAllPeers() []*types.PeerConnection {
 	defer peersMu.mutex.Unlock()
 
 	return peersMu.peers
+}
+
+func StoreMessageToSendOnConnect(publicKey *ecdsa.PublicKey, msg []byte) {
+	postponedMessagesMu.mutex.Lock()
+	defer postponedMessagesMu.mutex.Unlock()
+	pkHex := utils.PublicKeyToHexString(publicKey)
+	postponedMessagesMu.messages[pkHex] = append(postponedMessagesMu.messages[pkHex], msg)
+	postponedMessagesMu.lastUpdate[pkHex] = time.Now().Unix()
+}
+
+func GetPostponedMessages(publicKey *ecdsa.PublicKey) [][]byte {
+	postponedMessagesMu.mutex.Lock()
+	defer postponedMessagesMu.mutex.Unlock()
+	return postponedMessagesMu.messages[utils.PublicKeyToHexString(publicKey)]
+}
+
+func ClearOldPostponedMessages() {
+	postponedMessagesMu.mutex.Lock()
+	defer postponedMessagesMu.mutex.Unlock()
+	now := time.Now().Unix()
+	for pkHex, timeUpd := range postponedMessagesMu.lastUpdate {
+		if now-timeUpd > messageExpirationTime {
+			delete(postponedMessagesMu.messages, pkHex)
+			delete(postponedMessagesMu.lastUpdate, pkHex)
+		}
+	}
+}
+
+func RemovePostponedMessages(publicKey *ecdsa.PublicKey) {
+	postponedMessagesMu.mutex.Lock()
+	defer postponedMessagesMu.mutex.Unlock()
+	pkHex := utils.PublicKeyToHexString(publicKey)
+	delete(postponedMessagesMu.messages, pkHex)
+	delete(postponedMessagesMu.lastUpdate, pkHex)
 }
 
 func GetRecentPeers() []*types.PeerConnection {
