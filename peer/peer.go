@@ -2,7 +2,6 @@ package peer
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"github.com/juju/loggo"
@@ -24,19 +23,17 @@ import (
 )
 
 const MaxTryToConnect = 3
-const TagConnection = "connection"
-const TagHub = "hub"
 
 var log = loggo.GetLogger("peer")
 
 type Peer struct {
 	host           core.Host
-	streams        map[string]network.Stream
+	hubStreams     map[string]network.Stream
 	mutex          *sync.Mutex
 	grpcMsgHandler func([]byte)
 	running        int32
 	msgChannels    map[string]chan []byte
-	PublicKey      *ecdsa.PublicKey
+	PublicKey      string
 	Signature      []byte
 }
 
@@ -69,7 +66,7 @@ func New(id string) *Peer {
 
 	mut := &sync.Mutex{}
 	localPeer := new(Peer)
-	localPeer.streams = make(map[string]network.Stream)
+	localPeer.hubStreams = make(map[string]network.Stream)
 	localPeer.msgChannels = make(map[string]chan []byte)
 	localPeer.host = localHost
 	localPeer.mutex = mut
@@ -77,6 +74,8 @@ func New(id string) *Peer {
 	localPeer.SetStreamHandlerFn(GRPCHandlerMock)
 
 	localPeer.host.SetStreamHandler("/register", registerHandlerForLocalPeer(localPeer))
+	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(localPeer))
+	localPeer.host.SetStreamHandler("/getPeers", getPeerHandlerForLocalPeer(localPeer))
 
 	localPeer.startOldMsgCleaner()
 
@@ -93,7 +92,7 @@ func (localPeer *Peer) startOldMsgCleaner() {
 		for {
 			select {
 			case <-ticker.C:
-				storage.ClearOldPostponedMessages()
+				storage.RemoveOldPostponedMessages()
 			case <-globalQuit:
 				ticker.Stop()
 				return
@@ -110,7 +109,7 @@ func (localPeer *Peer) Register(signature []byte) bool {
 		return false
 	}
 	log.Debugf("localPubKey %s", utils.PublicKeyToHexString(localPublicKey))
-	localPeer.SetPublicKey(localPublicKey)
+	localPeer.SetPublicKey(utils.PublicKeyToHexString(localPublicKey))
 	localPeer.SetSignature(signature)
 	bootstrapMAddrs := config.GetBootstrapMultiaddrs()
 	connected := 0
@@ -120,14 +119,17 @@ func (localPeer *Peer) Register(signature []byte) bool {
 			Id:   bootstrapId,
 			Addr: bootstrapMAddrs[i],
 		}
-		if bootstrapId == localPeer.host.ID() {
-			log.Debugf("We won't ask self, skipping registration")
+		if bootstrapId == localPeer.host.ID() || storage.IsPeerIdConnected(bootstrapId.Pretty()) {
+			log.Debugf("skipping registration of already registered peer")
 			continue
 		}
 		if err := localPeer.registerOnPeer(bootstrap, signature); err != nil {
 			log.Errorf("Can't register on bootstrap: %s", err)
 			continue
 		}
+
+		storage.SetPeerIdConnected(bootstrap.Id.Pretty(), true)
+
 		connected++
 		log.Debugf("registered on bootstrap")
 		bootstrapStream, err := localPeer.host.NewStream(context.Background(), bootstrapId, "/getPeers")
@@ -149,9 +151,8 @@ func (localPeer *Peer) Register(signature []byte) bool {
 		log.Debugf("Received %v peers", len(peerConnections))
 		for i, curr := range peerConnections {
 			log.Debugf("Registering on %v/%v", i+1, len(peerConnections))
-			log.Debugf("Tag info %v", localPeer.host.ConnManager().GetTagInfo(curr.Id).Tags[TagConnection])
 			// skip bootstrap and self connection
-			if curr.Id == localPeer.host.ID() || curr.Id == bootstrapId || localPeer.host.ConnManager().GetTagInfo(curr.Id).Tags[TagConnection] != 0 || curr.PublicKey == nil {
+			if curr.Id == localPeer.host.ID() || storage.IsPeerIdConnected(curr.Id.Pretty()) || curr.PublicKey == "" {
 				continue
 			}
 			// just store connection
@@ -161,20 +162,18 @@ func (localPeer *Peer) Register(signature []byte) bool {
 				continue
 			}
 
-			localPeer.host.ConnManager().TagPeer(curr.Id, TagConnection, 1)
+			storage.SetPeerIdConnected(curr.Id.Pretty(), true)
 			// refresh connection's timestamp
 			storage.UpdateRegisteredPeerById(curr.Id)
 			connected++
 		}
 	}
-	localPeer.host.SetStreamHandler("/hub", incomingConnectionEstablishmentHandler(localPeer))
-	localPeer.host.SetStreamHandler("/getPeers", getPeerHandlerForLocalPeer(localPeer))
 	log.Debugf("Registered %v peers", connected)
 
 	return true
 }
 
-func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream, error) {
+func (localPeer *Peer) connectToPeer(publicKey string) (network.Stream, error) {
 	localPeer.lock()
 	defer localPeer.unlock()
 
@@ -182,13 +181,15 @@ func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream
 		return nil, errors.New("not running")
 	}
 
-	if s, ok := localPeer.streams[utils.PublicKeyToHexString(publicKey)]; ok {
+	if s, ok := localPeer.hubStreams[publicKey]; ok {
 		return s, nil
 	}
 
+	log.Debugf("connecting to %s", publicKey)
+
 	targetPeer, err := storage.GetPeerByPublicKey(publicKey)
 	if err != nil {
-		log.Debugf("Peer not found %s", utils.PublicKeyToHexString(publicKey))
+		log.Debugf("Peer not found %s", publicKey)
 		return nil, err
 	}
 
@@ -245,7 +246,7 @@ func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream
 		return nil, err
 	}
 
-	localPeer.host.ConnManager().TagPeer(targetPeer.Id, TagHub, 1)
+	storage.SetPublicKeyConnected(publicKey, true)
 
 	go func() {
 		for localPeer.running != 0 {
@@ -263,21 +264,21 @@ func (localPeer *Peer) connectToPeer(publicKey *ecdsa.PublicKey) (network.Stream
 		}
 	}()
 
-	localPeer.streams[utils.PublicKeyToHexString(publicKey)] = hubStream
+	localPeer.hubStreams[publicKey] = hubStream
 	return hubStream, nil
 }
 
-func (localPeer *Peer) RegisterStream(publicKey *ecdsa.PublicKey, stream network.Stream) {
+func (localPeer *Peer) RegisterStream(publicKey string, stream network.Stream) {
 	localPeer.lock()
 	defer localPeer.unlock()
-	localPeer.streams[utils.PublicKeyToHexString(publicKey)] = stream
+	localPeer.hubStreams[publicKey] = stream
 }
 
-func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte, ensureSent bool) (result bool) {
-	log.Tracef("Sending message to peer %s message length %d", utils.PublicKeyToHexString(publicKey), len(msg))
+func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte, ensureSent bool) (result bool) {
+	log.Tracef("Sending message to peer %s message length %d", publicKey, len(msg))
 
 	localPeer.lock()
-	msgChannel, ok := localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)]
+	msgChannel, ok := localPeer.msgChannels[publicKey]
 	localPeer.unlock()
 
 	if ok {
@@ -298,36 +299,48 @@ func (localPeer *Peer) SendMessageToPeer(publicKey *ecdsa.PublicKey, msg []byte,
 		if ensureSent {
 			localPeer.storeMsgForFutureSend(publicKey, msg)
 		}
-		log.Tracef("No connection with peer: %s", utils.PublicKeyToHexString(publicKey))
+		log.Tracef("No connection with peer: %s", publicKey)
 		return false
 	}
 }
 
-func (localPeer *Peer) storeMsgForFutureSend(publicKey *ecdsa.PublicKey, msg []byte) {
+func (localPeer *Peer) storeMsgForFutureSend(publicKey string, msg []byte) {
 	storage.StoreMessageToSendOnConnect(publicKey, msg)
 }
 
 func (localPeer *Peer) BroadcastMessage(msg []byte) {
 	activePeers := storage.GetRecentPeers()
+	if len(activePeers) == 0 {
+		log.Tracef("There are no connected peers")
+		return
+	}
 	for _, peer := range activePeers {
-		if peer.PublicKey == nil || localPeer.host.ConnManager().GetTagInfo(peer.Id).Tags[TagConnection] != 0 {
+		log.Tracef("peer %s connected: %v", peer.PublicKey, storage.IsPublicKeyConnected(peer.PublicKey))
+		if peer.PublicKey == "" || !storage.IsPublicKeyConnected(peer.PublicKey) {
 			continue
 		}
 		localPeer.SendMessageToPeer(peer.PublicKey, msg, false)
 	}
 }
 
-func (localPeer *Peer) NewMsgChannel(publicKey *ecdsa.PublicKey) chan []byte {
+func (localPeer *Peer) NewMsgChannel(publicKey string) chan []byte {
 	msgChannel := make(chan []byte)
 
-	log.Tracef("new msg channel for", utils.PublicKeyToHexString(publicKey))
+	_, err := localPeer.connectToPeer(publicKey)
+	if err != nil {
+		log.Errorf("Can't establish connection with: %s", publicKey)
+		log.Errorf("%s", err)
+		localPeer.removeFromConnected(publicKey)
+		return nil
+	}
 
 	go func() {
 		for {
 			select {
 			case msg := <-msgChannel:
 				if len(msg) == 0 {
-					log.Debugf("Closing msg channel for %s", utils.PublicKeyToHexString(publicKey))
+					log.Debugf("Closing msg channel for %s", publicKey)
+					localPeer.removeFromConnected(publicKey)
 					return
 				}
 				localPeer.lock()
@@ -338,7 +351,7 @@ func (localPeer *Peer) NewMsgChannel(publicKey *ecdsa.PublicKey) chan []byte {
 				localPeer.unlock()
 				s, err := localPeer.connectToPeer(publicKey)
 				if err != nil {
-					log.Errorf("Can't establish connection with: %s", utils.PublicKeyToHexString(publicKey))
+					log.Errorf("Can't establish connection with: %s", publicKey)
 					log.Errorf("%s", err)
 					localPeer.removeFromConnected(publicKey)
 					continue
@@ -346,13 +359,13 @@ func (localPeer *Peer) NewMsgChannel(publicKey *ecdsa.PublicKey) chan []byte {
 
 				err = communication.Write(s, msg)
 				if err != nil {
-					log.Errorf("Can't connect to peer %s. Removing from connected", utils.PublicKeyToHexString(publicKey))
+					log.Errorf("Can't connect to peer %s. Removing from connected", publicKey)
 					localPeer.removeFromConnected(publicKey)
 					continue
 				}
 				storage.UpdateRegisteredPeerByPublicKey(publicKey)
 			case <-globalQuit:
-				log.Infof("will no longer receive msgs from %s", utils.PublicKeyToHexString(publicKey))
+				log.Debugf("will no longer receive msgs from %s", publicKey)
 				return
 			default:
 			}
@@ -361,7 +374,7 @@ func (localPeer *Peer) NewMsgChannel(publicKey *ecdsa.PublicKey) chan []byte {
 	return msgChannel
 }
 
-func (localPeer *Peer) ReceiveResponseFromPeer(publicKey *ecdsa.PublicKey) ([]byte, error) {
+func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) ([]byte, error) {
 	localPeer.lock()
 	if localPeer.running == 0 {
 		localPeer.unlock()
@@ -374,7 +387,7 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey *ecdsa.PublicKey) ([]by
 		return nil, errors.New("not found")
 	}
 
-	log.Tracef("Received msg from peer (we are conn initiator) %s", utils.PublicKeyToHexString(publicKey))
+	log.Tracef("Received msg from peer (we are conn initiator) %s", publicKey)
 
 	msg, err := communication.ReadOnce(s)
 	if err != nil {
@@ -393,7 +406,7 @@ func (localPeer *Peer) SetStreamHandlerFn(callback func(msg []byte)) {
 	log.Tracef("Messaged handling callback to (%p) is set for peer (%p)", callback, localPeer)
 }
 
-func (localPeer *Peer) SetPublicKey(publicKey *ecdsa.PublicKey) {
+func (localPeer *Peer) SetPublicKey(publicKey string) {
 	localPeer.PublicKey = publicKey
 }
 
@@ -409,7 +422,9 @@ func (localPeer *Peer) GetId() []byte {
 	return id
 }
 
-func (localPeer *Peer) removeFromConnected(publicKey *ecdsa.PublicKey) {
+func (localPeer *Peer) removeFromConnected(publicKey string) {
+	localPeer.lock()
+	defer localPeer.unlock()
 
 	peer, err := storage.GetPeerByPublicKey(publicKey)
 	if err != nil {
@@ -417,19 +432,17 @@ func (localPeer *Peer) removeFromConnected(publicKey *ecdsa.PublicKey) {
 		return
 	}
 
-	localPeer.lock()
-	defer localPeer.unlock()
 	storage.RemoveConnection(peer.Id)
-	localPeer.host.ConnManager().UntagPeer(peer.Id, TagConnection)
-	localPeer.host.ConnManager().UntagPeer(peer.Id, TagHub)
-	if s, ok := localPeer.streams[utils.PublicKeyToHexString(publicKey)]; ok {
+	storage.SetPublicKeyConnected(peer.PublicKey, false)
+	storage.SetPeerIdConnected(peer.Id.Pretty(), false)
+	if s, ok := localPeer.hubStreams[publicKey]; ok {
 		localPeer.host.Network().ClosePeer(s.Conn().RemotePeer())
 		s.Close()
-		delete(localPeer.streams, utils.PublicKeyToHexString(publicKey))
+		delete(localPeer.hubStreams, publicKey)
 	}
-	if ch, ok := localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)]; ok {
+	if ch, ok := localPeer.msgChannels[publicKey]; ok {
 		close(ch)
-		delete(localPeer.msgChannels, utils.PublicKeyToHexString(publicKey))
+		delete(localPeer.msgChannels, publicKey)
 	}
 }
 
@@ -448,24 +461,24 @@ func (localPeer *Peer) GetExternalMultiAddress() (ma.Multiaddr, error) {
 	return nil, errors.New("GetExternalMultiAddress: addr not found")
 }
 
-func (localPeer *Peer) GetStream(pubKey *ecdsa.PublicKey) (network.Stream, bool) {
+func (localPeer *Peer) GetStream(pubKey string) (network.Stream, bool) {
 	localPeer.lock()
 	defer localPeer.unlock()
-	s, ok := localPeer.streams[utils.PublicKeyToHexString(pubKey)]
+	s, ok := localPeer.hubStreams[pubKey]
 	return s, ok
 }
 
-func (localPeer *Peer) IsConnected(publicKey *ecdsa.PublicKey) bool {
+func (localPeer *Peer) IsConnected(publicKey string) bool {
 	localPeer.lock()
 	defer localPeer.unlock()
-	_, exist := localPeer.streams[utils.PublicKeyToHexString(publicKey)]
+	_, exist := localPeer.hubStreams[publicKey]
 	return exist
 }
 
-func (localPeer *Peer) IsMsgChannelExist(publicKey *ecdsa.PublicKey) bool {
+func (localPeer *Peer) IsMsgChannelExist(publicKey string) bool {
 	localPeer.lock()
 	defer localPeer.unlock()
-	_, exist := localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)]
+	_, exist := localPeer.msgChannels[publicKey]
 	return exist
 }
 
@@ -594,20 +607,27 @@ func (localPeer *Peer) registerOnPeer(conn *types.PeerConnection, signature []by
 		return err
 	}
 
-	conn.PublicKey = publicKey
+	conn.PublicKey = utils.PublicKeyToHexString(publicKey)
 
 	s.Close()
 
-	msgChannel := localPeer.NewMsgChannel(publicKey)
-	localPeer.msgChannels[utils.PublicKeyToHexString(publicKey)] = msgChannel
+	log.Debugf("creating new msg channel for %s", conn.PublicKey)
+	msgChannel := localPeer.NewMsgChannel(conn.PublicKey)
+	if msgChannel == nil {
+		log.Warningf("Cant open msg channel with %s", conn.PublicKey)
+		localPeer.removeFromConnected(conn.PublicKey)
+		return errors.New("no conn")
+	}
 
-	localPeer.SendPostponedMessages(publicKey)
+	localPeer.msgChannels[conn.PublicKey] = msgChannel
 
-	log.Debugf("Registered on peer %s", utils.PublicKeyToHexString(publicKey))
+	localPeer.SendPostponedMessages(conn.PublicKey)
+
+	log.Debugf("Registered on peer %s", conn.PublicKey)
 	return nil
 }
 
-func (localPeer *Peer) SendPostponedMessages(publicKey *ecdsa.PublicKey) {
+func (localPeer *Peer) SendPostponedMessages(publicKey string) {
 	messages := storage.GetPostponedMessages(publicKey)
 	if len(messages) == 0 {
 		return
@@ -617,8 +637,8 @@ func (localPeer *Peer) SendPostponedMessages(publicKey *ecdsa.PublicKey) {
 			return
 		}
 	}
-	storage.RemovePostponedMessages(publicKey)
-	log.Debugf("Sent %v postponed messages to %s", len(messages), utils.PublicKeyToHexString(publicKey))
+	storage.ClearPostponedMessages(publicKey)
+	log.Debugf("Sent %v postponed messages to %s", len(messages), publicKey)
 }
 
 func (localPeer *Peer) lock() {
@@ -634,14 +654,14 @@ func (localPeer *Peer) Stop() {
 	close(globalQuit)
 	defer localPeer.unlock()
 	atomic.StoreInt32(&localPeer.running, 0)
-	streamsLen := len(localPeer.streams)
+	streamsLen := len(localPeer.hubStreams)
 	i := 0
-	for _, stream := range localPeer.streams {
+	for _, stream := range localPeer.hubStreams {
 		stream.Close()
 		i++
 		log.Debugf("Stream closed %v/%v", i, streamsLen)
 	}
-	localPeer.streams = nil
+	localPeer.hubStreams = nil
 	if err := localPeer.host.ConnManager().Close(); err != nil {
 		panic(err)
 	}

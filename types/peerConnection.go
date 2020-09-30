@@ -2,18 +2,17 @@ package types
 
 import (
 	"bytes"
-	"crypto/ecdsa"
 	"encoding/binary"
 	"encoding/gob"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 	"lachain-communication-hub/communication"
+	"lachain-communication-hub/utils"
 	"log"
 )
 
 type PeerConnection struct {
-	PublicKey *ecdsa.PublicKey
+	PublicKey string
 	Id        peer.ID
 	LastSeen  uint32
 	Addr      ma.Multiaddr
@@ -35,8 +34,9 @@ func (pc *PeerConnection) toBytes() []byte {
 	} else {
 		addr = pc.Addr.Bytes()
 	}
+
 	ser := PeerConnectionSerializable{
-		PublicKey: crypto.CompressPubkey(pc.PublicKey),
+		PublicKey: utils.HexToBytes(pc.PublicKey),
 		Id:        pc.Id.Pretty(),
 		LastSeen:  pc.LastSeen,
 		Addr:      addr,
@@ -66,10 +66,7 @@ func PeerConnectionFromBytes(raw []byte) *PeerConnection {
 		log.Fatal("decode error:", err)
 	}
 
-	pub, err := crypto.DecompressPubkey(peerConn.PublicKey)
-	if err != nil {
-		log.Fatal("decompress pub error:", err)
-	}
+	pub := utils.BytesToHex(peerConn.PublicKey)
 
 	id, err := peer.Decode(peerConn.Id)
 	if err != nil {

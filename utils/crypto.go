@@ -49,7 +49,7 @@ func EcRecover(data, sig []byte) (*ecdsa.PublicKey, error) {
 }
 
 func PublicKeyToHexString(publicKey *ecdsa.PublicKey) string {
-	return hex.EncodeToString(crypto.CompressPubkey(publicKey))
+	return BytesToHex(crypto.CompressPubkey(publicKey))
 }
 
 func PublicKeyToBytes(publicKey *ecdsa.PublicKey) []byte {
@@ -57,10 +57,7 @@ func PublicKeyToBytes(publicKey *ecdsa.PublicKey) []byte {
 }
 
 func HexToPublicKey(publicKey string) *ecdsa.PublicKey {
-	publicKeyBytes, err := hex.DecodeString(publicKey)
-	if err != nil {
-		log.Errorf("can't decode public key: %s", publicKey)
-	}
+	publicKeyBytes := HexToBytes(publicKey)
 
 	pub, err := crypto.DecompressPubkey(publicKeyBytes)
 	if err != nil {
@@ -68,4 +65,17 @@ func HexToPublicKey(publicKey string) *ecdsa.PublicKey {
 	}
 
 	return pub
+}
+
+func HexToBytes(publicKey string) []byte {
+	publicKeyBytes, err := hex.DecodeString(publicKey)
+	if err != nil {
+		log.Errorf("can't decode public key: %s", publicKey)
+	}
+
+	return publicKeyBytes
+}
+
+func BytesToHex(publicKey []byte) string {
+	return hex.EncodeToString(publicKey)
 }

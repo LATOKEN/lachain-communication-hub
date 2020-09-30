@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
 	"google.golang.org/grpc"
 	"io"
@@ -114,10 +113,7 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 			if bytes.Equal(req.PublicKey, ZeroPub) {
 				s.peer.BroadcastMessage(req.Data)
 			} else {
-				pub, err := crypto.DecompressPubkey(req.PublicKey)
-				if err != nil {
-					panic(err)
-				}
+				pub := hex.EncodeToString(req.PublicKey)
 				s.peer.SendMessageToPeer(pub, req.Data, true)
 			}
 		}()

@@ -49,16 +49,23 @@ func handleHubConnection(peer *Peer, s network.Stream) {
 	msgChannelExist := peer.IsMsgChannelExist(remotePeer.PublicKey)
 	if !msgChannelExist {
 		msgChannel := peer.NewMsgChannel(remotePeer.PublicKey)
+		if msgChannel == nil {
+			log.Warningf("Cant open msg channel with %s", remotePeer.PublicKey)
+			peer.removeFromConnected(remotePeer.PublicKey)
+			return
+		}
 		peer.mutex.Lock()
-		peer.msgChannels[utils.PublicKeyToHexString(remotePeer.PublicKey)] = msgChannel
+		peer.msgChannels[remotePeer.PublicKey] = msgChannel
 		peer.mutex.Unlock()
 	}
+
+	storage.SetPublicKeyConnected(remotePeer.PublicKey, true)
 
 	peer.SendPostponedMessages(remotePeer.PublicKey)
 
 	for {
 		msg, err := communication.ReadOnce(s)
-		log.Tracef("Received msg from peer %s", utils.PublicKeyToHexString(remotePeer.PublicKey))
+		log.Tracef("Received msg from peer %s", remotePeer.PublicKey)
 
 		if err != nil {
 			if err == io.EOF {
@@ -156,7 +163,7 @@ func handleRegister(localPeer *Peer, s network.Stream) {
 	mAddr, _ := ma.NewMultiaddrBytes(mAddrBytes)
 
 	regPeer := &types.PeerConnection{
-		PublicKey: publicKey,
+		PublicKey: utils.PublicKeyToHexString(publicKey),
 		Id:        s.Conn().RemotePeer(),
 		LastSeen:  uint32(time.Now().Unix()),
 		Addr:      mAddr,
@@ -169,9 +176,10 @@ func handleRegister(localPeer *Peer, s network.Stream) {
 		return
 	}
 
-	storage.RegisterOrUpdatePeer(regPeer)
-
 	s.Close()
+
+	storage.RegisterOrUpdatePeer(regPeer)
+	storage.SetPeerIdConnected(regPeer.Id.Pretty(), true)
 }
 
 func handleGetPeers(localPeer *Peer, s network.Stream) {
@@ -194,7 +202,7 @@ func handleGetPeers(localPeer *Peer, s network.Stream) {
 	var peersBytes []byte
 
 	for _, peerConn := range peerConnections {
-		if localPeer.host.ConnManager().GetTagInfo(peerConn.Id).Tags[TagHub] == 0 {
+		if !storage.IsPublicKeyConnected(peerConn.PublicKey) {
 			continue
 		}
 		peersBytes = append(peersBytes, peerConn.Encode()...)

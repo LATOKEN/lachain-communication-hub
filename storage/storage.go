@@ -1,14 +1,10 @@
 package storage
 
 import (
-	"bytes"
-	"crypto/ecdsa"
 	"errors"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"lachain-communication-hub/types"
-	"lachain-communication-hub/utils"
 	"sync"
 	"time"
 )
@@ -22,9 +18,14 @@ type peersWithMutex struct {
 	mutex *sync.Mutex
 }
 
-type validatorsWithMutex struct {
-	validators [][]byte
-	mutex      *sync.Mutex
+type connectedPublicKeysWithMutex struct {
+	connected map[string]bool
+	mutex     *sync.Mutex
+}
+
+type connectedPeersWithMutex struct {
+	connected map[string]bool
+	mutex     *sync.Mutex
 }
 
 type postponedMessagesWithMutex struct {
@@ -39,22 +40,33 @@ type currentConnectionsWithMutex struct {
 }
 
 var peersMu = peersWithMutex{mutex: &sync.Mutex{}}
-var validatorsMu = validatorsWithMutex{mutex: &sync.Mutex{}}
+
+var connectedPublicKeysMu = connectedPublicKeysWithMutex{
+	connected: make(map[string]bool),
+	mutex:     &sync.Mutex{},
+}
+
+var connectedPeersIdsMu = connectedPeersWithMutex{
+	connected: make(map[string]bool),
+	mutex:     &sync.Mutex{},
+}
+
 var derectConnectionsMu = currentConnectionsWithMutex{
 	mutex: &sync.Mutex{},
 }
+
 var postponedMessagesMu = postponedMessagesWithMutex{
 	messages:   make(map[string][][]byte),
 	lastUpdate: make(map[string]int64),
 	mutex:      &sync.Mutex{},
 }
 
-func GetPeerByPublicKey(publicKey *ecdsa.PublicKey) (*types.PeerConnection, error) {
+func GetPeerByPublicKey(publicKey string) (*types.PeerConnection, error) {
 	peersMu.mutex.Lock()
 	defer peersMu.mutex.Unlock()
 
 	for _, peer := range peersMu.peers {
-		if peer.PublicKey != nil && bytes.Equal(crypto.CompressPubkey(peer.PublicKey), crypto.CompressPubkey(publicKey)) {
+		if publicKey == peer.PublicKey {
 			return peer, nil
 		}
 	}
@@ -68,38 +80,43 @@ func GetAllPeers() []*types.PeerConnection {
 	return peersMu.peers
 }
 
-func StoreMessageToSendOnConnect(publicKey *ecdsa.PublicKey, msg []byte) {
+func StoreMessageToSendOnConnect(publicKey string, msg []byte) {
 	postponedMessagesMu.mutex.Lock()
 	defer postponedMessagesMu.mutex.Unlock()
-	pkHex := utils.PublicKeyToHexString(publicKey)
-	postponedMessagesMu.messages[pkHex] = append(postponedMessagesMu.messages[pkHex], msg)
-	postponedMessagesMu.lastUpdate[pkHex] = time.Now().Unix()
+	postponedMessagesMu.messages[publicKey] = append(postponedMessagesMu.messages[publicKey], msg)
+	postponedMessagesMu.lastUpdate[publicKey] = time.Now().Unix()
+	log.Tracef("Saved postponed msg for %s. Total msg count: %v", publicKey, len(postponedMessagesMu.messages[publicKey]))
 }
 
-func GetPostponedMessages(publicKey *ecdsa.PublicKey) [][]byte {
+func GetPostponedMessages(publicKey string) [][]byte {
 	postponedMessagesMu.mutex.Lock()
 	defer postponedMessagesMu.mutex.Unlock()
-	return postponedMessagesMu.messages[utils.PublicKeyToHexString(publicKey)]
+	return postponedMessagesMu.messages[publicKey]
 }
 
-func ClearOldPostponedMessages() {
+func RemoveOldPostponedMessages() {
 	postponedMessagesMu.mutex.Lock()
 	defer postponedMessagesMu.mutex.Unlock()
 	now := time.Now().Unix()
+	msgCount := 0
 	for pkHex, timeUpd := range postponedMessagesMu.lastUpdate {
 		if now-timeUpd > messageExpirationTime {
+			msgCount += len(postponedMessagesMu.messages)
 			delete(postponedMessagesMu.messages, pkHex)
 			delete(postponedMessagesMu.lastUpdate, pkHex)
 		}
 	}
+	log.Debugf("Removed %v old postponed messages", msgCount)
 }
 
-func RemovePostponedMessages(publicKey *ecdsa.PublicKey) {
+func ClearPostponedMessages(publicKey string) {
 	postponedMessagesMu.mutex.Lock()
 	defer postponedMessagesMu.mutex.Unlock()
-	pkHex := utils.PublicKeyToHexString(publicKey)
+	pkHex := publicKey
+	msgCount := len(postponedMessagesMu.messages[pkHex])
 	delete(postponedMessagesMu.messages, pkHex)
 	delete(postponedMessagesMu.lastUpdate, pkHex)
+	log.Debugf("Cleared %v postponed messages for %s", msgCount, publicKey)
 }
 
 func GetRecentPeers() []*types.PeerConnection {
@@ -158,38 +175,17 @@ func UpdateRegisteredPeerById(id peer.ID) {
 	}
 }
 
-func UpdateRegisteredPeerByPublicKey(publicKey *ecdsa.PublicKey) {
+func UpdateRegisteredPeerByPublicKey(publicKey string) {
 	peersMu.mutex.Lock()
 	defer peersMu.mutex.Unlock()
 
 	for i, peer := range peersMu.peers {
-		if peer.PublicKey != nil && bytes.Equal(crypto.CompressPubkey(peer.PublicKey), crypto.CompressPubkey(publicKey)) {
+		if peer.PublicKey == publicKey {
 			peersMu.peers[i].LastSeen = uint32(time.Now().Unix())
 			//log.Debugf("peer successfully updated:  %s, %s, %s", hex.EncodeToString(crypto.CompressPubkey(peer.PublicKey)), peer.Id, peer.Addr)
 			return
 		}
 	}
-}
-
-func IsConsensusPeer(publicKey *ecdsa.PublicKey) bool {
-	validatorsMu.mutex.Lock()
-	defer validatorsMu.mutex.Unlock()
-
-	pubBytes := utils.PublicKeyToBytes(publicKey)
-
-	for _, val := range validatorsMu.validators {
-		if bytes.Equal(val, pubBytes) {
-			return true
-		}
-	}
-	return false
-}
-
-func SetValidators(_validators [][]byte) {
-	validatorsMu.mutex.Lock()
-	defer validatorsMu.mutex.Unlock()
-
-	validatorsMu.validators = _validators
 }
 
 func AddConnection(id peer.ID) {
@@ -223,6 +219,34 @@ func GetDirectlyConnectedPeerIds() []peer.ID {
 	defer derectConnectionsMu.mutex.Unlock()
 
 	return derectConnectionsMu.ids
+}
+
+func SetPublicKeyConnected(publicKey string, flag bool) {
+	connectedPublicKeysMu.mutex.Lock()
+	defer connectedPublicKeysMu.mutex.Unlock()
+
+	connectedPublicKeysMu.connected[publicKey] = flag
+}
+
+func IsPublicKeyConnected(publicKey string) bool {
+	connectedPublicKeysMu.mutex.Lock()
+	defer connectedPublicKeysMu.mutex.Unlock()
+
+	return connectedPublicKeysMu.connected[publicKey]
+}
+
+func SetPeerIdConnected(id string, flag bool) {
+	connectedPeersIdsMu.mutex.Lock()
+	defer connectedPeersIdsMu.mutex.Unlock()
+
+	connectedPeersIdsMu.connected[id] = flag
+}
+
+func IsPeerIdConnected(id string) bool {
+	connectedPeersIdsMu.mutex.Lock()
+	defer connectedPeersIdsMu.mutex.Unlock()
+
+	return connectedPeersIdsMu.connected[id]
 }
 
 func RemoveConnection(id peer.ID) {
