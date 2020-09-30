@@ -119,18 +119,21 @@ func (localPeer *Peer) Register(signature []byte) bool {
 			Id:   bootstrapId,
 			Addr: bootstrapMAddrs[i],
 		}
-		if bootstrapId == localPeer.host.ID() || storage.IsPeerIdConnected(bootstrapId.Pretty()) {
-			log.Debugf("skipping registration of already registered peer")
-			continue
-		}
-		if err := localPeer.registerOnPeer(bootstrap, signature); err != nil {
-			log.Errorf("Can't register on bootstrap: %s", err)
+		if bootstrapId == localPeer.host.ID() {
+			log.Debugf("skipping registration on ourselves")
 			continue
 		}
 
-		storage.SetPeerIdConnected(bootstrap.Id.Pretty(), true)
+		if !storage.IsPeerIdConnected(bootstrapId.Pretty()) {
+			if err := localPeer.registerOnPeer(bootstrap, signature); err != nil {
+				log.Errorf("Can't register on bootstrap: %s", err)
+				continue
+			}
 
-		connected++
+			storage.SetPeerIdConnected(bootstrap.Id.Pretty(), true)
+			connected++
+		}
+
 		log.Debugf("registered on bootstrap")
 		bootstrapStream, err := localPeer.host.NewStream(context.Background(), bootstrapId, "/getPeers")
 		if err != nil {
@@ -368,6 +371,7 @@ func (localPeer *Peer) NewMsgChannel(publicKey string) chan []byte {
 				log.Debugf("will no longer receive msgs from %s", publicKey)
 				return
 			default:
+				time.Sleep(100 * time.Millisecond)
 			}
 		}
 	}()
