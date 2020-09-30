@@ -370,8 +370,6 @@ func (localPeer *Peer) NewMsgChannel(publicKey string) chan []byte {
 			case <-globalQuit:
 				log.Debugf("will no longer receive msgs from %s", publicKey)
 				return
-			default:
-				time.Sleep(100 * time.Millisecond)
 			}
 		}
 	}()
