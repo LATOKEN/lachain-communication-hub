@@ -28,6 +28,11 @@ type connectedPeersWithMutex struct {
 	mutex     *sync.Mutex
 }
 
+type unprocessedMessagesWithMutex struct {
+	messages [][]byte
+	mutex    *sync.Mutex
+}
+
 type postponedMessagesWithMutex struct {
 	messages   map[string][][]byte
 	lastUpdate map[string]int64
@@ -52,6 +57,10 @@ var connectedPeersIdsMu = connectedPeersWithMutex{
 }
 
 var derectConnectionsMu = currentConnectionsWithMutex{
+	mutex: &sync.Mutex{},
+}
+
+var unporoccessedGRPCMessagesMu = unprocessedMessagesWithMutex{
 	mutex: &sync.Mutex{},
 }
 
@@ -85,7 +94,23 @@ func StoreMessageToSendOnConnect(publicKey string, msg []byte) {
 	defer postponedMessagesMu.mutex.Unlock()
 	postponedMessagesMu.messages[publicKey] = append(postponedMessagesMu.messages[publicKey], msg)
 	postponedMessagesMu.lastUpdate[publicKey] = time.Now().Unix()
-	log.Tracef("Saved postponed msg for %s. Total msg count: %v", publicKey, len(postponedMessagesMu.messages[publicKey]))
+	log.Debugf("Saved postponed msg for %s. Total msg count: %v", publicKey, len(postponedMessagesMu.messages[publicKey]))
+}
+
+func StoreGRPCMessageUntilEstablishCommunicationBridge(msg []byte) {
+	unporoccessedGRPCMessagesMu.mutex.Lock()
+	defer unporoccessedGRPCMessagesMu.mutex.Unlock()
+	unporoccessedGRPCMessagesMu.messages = append(unporoccessedGRPCMessagesMu.messages, msg)
+	log.Tracef("Stored GRPC msg with len: %v", len(msg))
+}
+
+func TakeSavedGRPCMessages() [][]byte {
+	unporoccessedGRPCMessagesMu.mutex.Lock()
+	defer unporoccessedGRPCMessagesMu.mutex.Unlock()
+	msgs := unporoccessedGRPCMessagesMu.messages
+	unporoccessedGRPCMessagesMu.messages = [][]byte{}
+	log.Tracef("Processing %v saved GRPC messages", len(msgs))
+	return msgs
 }
 
 func GetPostponedMessages(publicKey string) [][]byte {

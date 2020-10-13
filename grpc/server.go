@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"io"
 	"lachain-communication-hub/peer"
+	"lachain-communication-hub/storage"
 	"net"
 	"strings"
 	"time"
@@ -69,6 +70,12 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 	}
 
 	s.peer.SetStreamHandlerFn(onMsg)
+
+	unprocessedMsgs := storage.TakeSavedGRPCMessages()
+
+	for _, msg := range unprocessedMsgs {
+		onMsg(msg)
+	}
 
 	for {
 

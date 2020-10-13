@@ -43,7 +43,7 @@ func handleHubConnection(peer *Peer, s network.Stream) {
 	}
 	streamRegistered := peer.IsConnected(remotePeer.PublicKey)
 	if !streamRegistered {
-		peer.RegisterStream(remotePeer.PublicKey, s)
+		peer.RegisterHubStream(remotePeer.PublicKey, s)
 	}
 
 	msgChannelExist := peer.IsMsgChannelExist(remotePeer.PublicKey)

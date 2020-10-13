@@ -39,8 +39,9 @@ type Peer struct {
 
 var globalQuit = make(chan struct{})
 
-func GRPCHandlerMock([]byte) {
-	log.Tracef("Skipped received message in the mock...")
+func GRPCHandlerMock(msg []byte) {
+	//log.Tracef("Skipped received message in the mock...")
+	storage.StoreGRPCMessageUntilEstablishCommunicationBridge(msg)
 }
 
 func New(id string) *Peer {
@@ -271,7 +272,7 @@ func (localPeer *Peer) connectToPeer(publicKey string) (network.Stream, error) {
 	return hubStream, nil
 }
 
-func (localPeer *Peer) RegisterStream(publicKey string, stream network.Stream) {
+func (localPeer *Peer) RegisterHubStream(publicKey string, stream network.Stream) {
 	localPeer.lock()
 	defer localPeer.unlock()
 	localPeer.hubStreams[publicKey] = stream
@@ -289,7 +290,7 @@ func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte, ensureSen
 			// recover from panic caused by writing to a closed channel
 			if r := recover(); r != nil {
 				err := fmt.Errorf("%v", r)
-				fmt.Printf("write: error writing on channel: %v\n", err)
+				log.Errorf("write: error writing on channel: %v\n", err)
 				result = false
 				if ensureSent {
 					localPeer.storeMsgForFutureSend(publicKey, msg)
@@ -351,12 +352,9 @@ func (localPeer *Peer) NewMsgChannel(publicKey string) chan []byte {
 					localPeer.unlock()
 					continue
 				}
+				s, ok := localPeer.hubStreams[publicKey]
 				localPeer.unlock()
-				s, err := localPeer.connectToPeer(publicKey)
-				if err != nil {
-					log.Errorf("Can't establish connection with: %s", publicKey)
-					log.Errorf("%s", err)
-					localPeer.removeFromConnected(publicKey)
+				if !ok {
 					continue
 				}
 
