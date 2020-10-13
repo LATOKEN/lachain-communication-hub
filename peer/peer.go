@@ -389,8 +389,6 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) ([]byte, error)
 		return nil, errors.New("not found")
 	}
 
-	log.Tracef("Received msg from peer (we are conn initiator) %s", publicKey)
-
 	msg, err := communication.ReadOnce(s)
 	if err != nil {
 		if err.Error() == "stream reset" {

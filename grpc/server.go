@@ -51,7 +51,6 @@ func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error
 	ctx := stream.Context()
 
 	onMsg := func(msg []byte) {
-		log.Tracef("On message callback is called")
 		select {
 		case <-ctx.Done():
 			log.Errorf("Unable to send msg via rpc")
@@ -145,7 +144,7 @@ func New(port string, p *peer.Peer) *Server {
 	if err != nil {
 		panic(fmt.Sprintf("failed to listen: %v", err))
 	}
-	s := grpc.NewServer()
+	s := grpc.NewServer(grpc.MaxRecvMsgSize(100 * 1024 * 1024)) // 100MiB max msg size
 	server := &Server{
 		peer:       p,
 		grpcServer: s,
