@@ -65,8 +65,6 @@ func handleHubConnection(peer *Peer, s network.Stream) {
 
 	for {
 		msg, err := communication.ReadOnce(s)
-		log.Tracef("Received msg from peer %s", remotePeer.PublicKey)
-
 		if err != nil {
 			if err == io.EOF {
 				handler.Errorf("connection reset")
@@ -92,12 +90,8 @@ func processMessage(localPeer *Peer, s network.Stream, msg []byte) error {
 	if len(msg) == 0 {
 		return nil
 	}
-
-	handler.Tracef("Calling grpc message (%p) handler on peer (%p)", localPeer.grpcMsgHandler, localPeer)
-	localPeer.grpcMsgHandler(msg)
-
 	handler.Tracef("received msg from peer: %s, message len = %d", s.Conn().RemotePeer(), len(msg))
-
+	localPeer.grpcMsgHandler(msg)
 	switch string(msg) {
 	case "ping":
 		err := communication.Write(s, []byte("73515441561657fdh437h7fh4387f7834"))
