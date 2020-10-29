@@ -3,14 +3,23 @@ package communication
 import (
 	"bufio"
 	"encoding/binary"
+	"hash/crc32"
+
 	"github.com/libp2p/go-libp2p-core/network"
 )
 
+type MsgIntegrityError struct{}
+
+func (MsgIntegrityError) Error() string {
+	return "Message integrity check failed."
+}
+
 func EncodeDelimited(msg []byte) []byte {
-	encoded := make([]byte, 4)
-	binary.LittleEndian.PutUint32(encoded, uint32(len(msg)))
-	encoded = append(encoded, msg...)
-	return encoded
+	buf := make([]byte, 8+len(msg))                            // to avoid reallocation
+	binary.LittleEndian.PutUint32(buf[:4], uint32(len(msg)+4)) // len of message + crc32
+	copy(buf[4:], msg)
+	binary.LittleEndian.PutUint32(buf[4+len(msg):], crc32.ChecksumIEEE(msg))
+	return buf
 }
 
 func ExtractLength(msg []byte) uint32 {
@@ -31,13 +40,18 @@ func ReadFromReader(reader *bufio.Reader) ([]byte, error) {
 		return nil, err
 	}
 
-	var result []byte
-
 	bytesLeft := int(ExtractLength(msg))
 
-	for bytesLeft > 0 {
+	if bytesLeft < 4 { // message size is too small to contain checksum
+		err = MsgIntegrityError{}
+		return nil, err
+	}
 
-		msg = make([]byte, 4096)
+	// read the message itself and checksum
+	var result []byte
+
+	msg = make([]byte, 4096)
+	for bytesLeft > 0 {
 		n, err := reader.Read(msg)
 		if err != nil {
 			return nil, err
@@ -47,7 +61,14 @@ func ReadFromReader(reader *bufio.Reader) ([]byte, error) {
 		bytesLeft -= n
 	}
 
-	return result, nil
+	// check the checksum
+	checkSum := binary.LittleEndian.Uint32(result[len(result)-4:])
+	if checkSum != crc32.ChecksumIEEE(result[:len(result)-4]) { // mismatched checksum
+		err = MsgIntegrityError{}
+		return nil, err
+	}
+
+	return result[:len(result)-4], nil
 }
 
 func Write(s network.Stream, msg []byte) error {
