@@ -5,6 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	conf "lachain-communication-hub/config"
+	"lachain-communication-hub/types"
+	"os"
+	"strconv"
+
 	"github.com/juju/loggo"
 	"github.com/libp2p/go-libp2p"
 	circuit "github.com/libp2p/go-libp2p-circuit"
@@ -12,10 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p/config"
-	conf "lachain-communication-hub/config"
-	"lachain-communication-hub/types"
-	"os"
-	"strconv"
 )
 
 var prvPathPrefix = "./ChainLachain/prv"
@@ -83,14 +84,14 @@ func GenerateKey(count int) {
 	}
 }
 
-func BuildNamedHost(typ int, postfix string) core.Host {
+func BuildNamedHost(typ int, priv_key crypto.PrivKey) core.Host {
 
 	prvKeyOpt := func(c *config.Config) error {
-		c.PeerKey = GetPrivateKeyForHost(postfix)
+		c.PeerKey = priv_key
 		return nil
 	}
 
-	myId, _ := peer.IDFromPrivateKey(GetPrivateKeyForHost(postfix))
+	myId, _ := peer.IDFromPrivateKey(priv_key)
 
 	switch typ {
 	case types.Peer:

@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"github.com/juju/loggo"
 	"lachain-communication-hub/config"
 	server "lachain-communication-hub/grpc"
+	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer"
 	"unsafe"
+
+	"github.com/juju/loggo"
 )
 
 var localPeer *peer.Peer
@@ -24,7 +26,8 @@ func StartHub(
 	bootstrapAddress *C.char, bootstrapAddressLen C.int,
 ) {
 	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen))
-	localPeer = peer.New("_h1")
+	priv_key := host.GetPrivateKeyForHost("_h1")
+	localPeer = peer.New(priv_key)
 	grpcServer = server.New(C.GoStringN(grpcAddress, grpcAddressLen), localPeer)
 	grpcServer.Serve()
 }

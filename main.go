@@ -1,27 +1,30 @@
 package main
 
 import (
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/juju/loggo"
 	"lachain-communication-hub/config"
 	server "lachain-communication-hub/grpc"
+	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
+
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/juju/loggo"
 )
 
 func main() {
 	loggo.ConfigureLoggers("<root>=TRACE")
+	priv_key := host.GetPrivateKeyForHost("_h1")
 	if len(os.Args) <= 1 {
-		localPeer := peer.New("_h1")
+		localPeer := peer.New(priv_key)
 		s := server.New(config.GRPCPort, localPeer)
 		go s.Serve()
 	} else {
 		if os.Args[1] == "-nolookup" {
 			config.DisableIpLookup()
-			localPeer := peer.New("_h1")
+			localPeer := peer.New(priv_key)
 			server.New(config.GRPCPort, localPeer)
 		} else if os.Args[1] == "-keygen" {
 			count := 1
@@ -30,7 +33,7 @@ func main() {
 			}
 			peer.KeyGen(count)
 		} else if os.Args[1] == "-port" && len(os.Args) >= 2 {
-			localPeer := peer.New("_h1")
+			localPeer := peer.New(priv_key)
 			s := server.New(os.Args[2], localPeer)
 			go s.Serve()
 		}

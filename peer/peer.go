@@ -4,12 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/juju/loggo"
-	core "github.com/libp2p/go-libp2p-core"
-	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-libp2p-core/peer"
-	swarm "github.com/libp2p/go-libp2p-swarm"
-	ma "github.com/multiformats/go-multiaddr"
 	"lachain-communication-hub/communication"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
@@ -20,6 +14,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/juju/loggo"
+	core "github.com/libp2p/go-libp2p-core"
+	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p-core/peer"
+	swarm "github.com/libp2p/go-libp2p-swarm"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 const MaxTryToConnect = 3
@@ -44,8 +46,8 @@ func GRPCHandlerMock(msg []byte) {
 	storage.StoreGRPCMessageUntilEstablishCommunicationBridge(msg)
 }
 
-func New(id string) *Peer {
-	localHost := host.BuildNamedHost(types.Peer, id)
+func New(priv_key crypto.PrivKey) *Peer {
+	localHost := host.BuildNamedHost(types.Peer, priv_key)
 	log.Infof("my id: %s", localHost.ID())
 	log.Infof("listening on: %s", localHost.Addrs())
 

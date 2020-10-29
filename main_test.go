@@ -4,17 +4,19 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/juju/loggo"
-	"github.com/magiconair/properties/assert"
-	"google.golang.org/grpc"
 	"io"
 	"lachain-communication-hub/config"
 	server "lachain-communication-hub/grpc"
+	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer"
 	"lachain-communication-hub/utils"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/juju/loggo"
+	"github.com/magiconair/properties/assert"
+	"google.golang.org/grpc"
 
 	pb "lachain-communication-hub/grpc/protobuf"
 )
@@ -87,7 +89,8 @@ func TestCommunication(t *testing.T) {
 }
 
 func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, []byte) {
-	p := peer.New(id)
+	priv_key := host.GetPrivateKeyForHost(id)
+	p := peer.New(priv_key)
 	serv := server.New(port, p)
 
 	go serv.Serve()
