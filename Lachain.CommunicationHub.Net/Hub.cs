@@ -8,6 +8,7 @@ namespace Lachain.CommunicationHub.Net
         internal readonly Lazy<StartHub> StartHub;
         internal readonly Lazy<StopHub> StopHub;
         internal readonly Lazy<LogLevel> LogLevel;
+        internal readonly Lazy<SendMessage> SendMessage;
 
 
         const string Lib = "hub";
@@ -23,6 +24,7 @@ namespace Lachain.CommunicationHub.Net
             StartHub = LazyDelegate<StartHub>();
             StopHub = LazyDelegate<StopHub>();
             LogLevel = LazyDelegate<LogLevel>();
+            SendMessage = LazyDelegate<SendMessage>();
         }
 
         Lazy<TDelegate> LazyDelegate<TDelegate>()
@@ -47,6 +49,18 @@ namespace Lachain.CommunicationHub.Net
                         grpcAddressPtr, grpcAddressBytes.Length,
                         bootstrapAddressPtr, bootstrapAddressBytes.Length
                     );
+                }
+            }
+        }
+
+        public static void Send(byte[] publicKey, byte[] data)
+        {
+            unsafe
+            {
+                fixed (byte* publicKeyPtr = publicKey)
+                fixed (byte* dataPtr = data)
+                {
+                    Imports.SendMessage.Value(publicKeyPtr, publicKey.Length, dataPtr, data.Length);
                 }
             }
         }

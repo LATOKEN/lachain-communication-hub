@@ -9,6 +9,7 @@ import (
 	"lachain-communication-hub/config"
 	server "lachain-communication-hub/grpc"
 	"lachain-communication-hub/peer"
+	"unsafe"
 )
 
 var localPeer *peer.Peer
@@ -29,7 +30,7 @@ func StartHub(
 }
 
 //export SendMessage
-func SendMessage(pubKeyPtr *C.char, pubKeyLen C.int, dataPtr *C.char, dataLen C.int) {
+func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Pointer, dataLen C.int) {
 	pubKey := C.GoBytes(pubKeyPtr, pubKeyLen)
 	data := C.GoBytes(dataPtr, dataLen)
 	log.Tracef("SendMessage command to send %d bytes to %s", dataLen, hex.EncodeToString(pubKey))

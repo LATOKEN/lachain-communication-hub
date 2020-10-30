@@ -8,6 +8,12 @@ namespace Lachain.CommunicationHub.Net
         byte* bootstrapAddress, int bootstrapAddressLen
     );
 
+    [SymbolName(nameof(StartHub))]
+    public unsafe delegate int SendMessage(
+        byte* pubKey, int pubKeyLen,
+        byte* data, int dataLen
+    );
+
     [SymbolName(nameof(StopHub))]
     public delegate bool StopHub();
 
