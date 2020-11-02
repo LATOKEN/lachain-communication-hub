@@ -413,9 +413,12 @@ func (localPeer *Peer) SetSignature(signature []byte) {
 }
 
 func (localPeer *Peer) GetId() []byte {
+	if localPeer.host == nil || localPeer.host.ID() == nil {
+		return nil
+	}
 	id, err := localPeer.host.ID().Marshal()
 	if err != nil {
-		panic(err)
+		return nil
 	}
 	return id
 }
