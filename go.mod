@@ -4,6 +4,7 @@ require (
 	github.com/btcsuite/btcd v0.21.0-beta // indirect
 	github.com/ethereum/go-ethereum v1.9.20
 	github.com/glendc/go-external-ip v0.0.0-20200601212049-c872357d968e
+	github.com/go-delve/delve v1.5.0 // indirect
 	github.com/golang/protobuf v1.4.1
 	github.com/juju/loggo v0.0.0-20200526014432-9ce3a2e09b5e
 	github.com/libp2p/go-libp2p v0.10.3

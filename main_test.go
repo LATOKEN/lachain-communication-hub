@@ -34,14 +34,16 @@ func TestCommunication(t *testing.T) {
 	conn1, _ := makeServerPeer("_h1", config.GRPCPort, address1)
 	defer conn1.Close()
 
-	conn2, pub := makeServerPeer("_h2", ":50003", address2)
-	defer conn2.Close()
-
 	client := pb.NewCommunicationHubClient(conn1)
 	stream, err := client.Communicate(context.Background())
 	if err != nil {
 		log.Errorf("open stream error %v", err)
 	}
+
+	time.Sleep(30 * time.Second)
+
+	conn2, pub := makeServerPeer("_h2", ":50003", address2)
+	defer conn2.Close()
 
 	done := make(chan bool)
 

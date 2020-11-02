@@ -284,6 +284,7 @@ func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte, ensureSen
 	log.Tracef("Sending message to peer %s message length %d", publicKey, len(msg))
 
 	localPeer.lock()
+	log.Tracef("Peer's channels: [%q]", localPeer.msgChannels)
 	msgChannel, ok := localPeer.msgChannels[publicKey]
 	localPeer.unlock()
 
@@ -619,6 +620,7 @@ func (localPeer *Peer) registerOnPeer(conn *types.PeerConnection, signature []by
 		return errors.New("no conn")
 	}
 
+	log.Tracef("Adding channel for key %s", string(conn.PublicKey))
 	localPeer.msgChannels[conn.PublicKey] = msgChannel
 
 	localPeer.SendPostponedMessages(conn.PublicKey)

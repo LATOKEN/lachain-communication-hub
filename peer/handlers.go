@@ -1,15 +1,16 @@
 package peer
 
 import (
-	"github.com/juju/loggo"
-	"github.com/libp2p/go-libp2p-core/network"
-	ma "github.com/multiformats/go-multiaddr"
 	"io"
 	"lachain-communication-hub/communication"
 	"lachain-communication-hub/storage"
 	"lachain-communication-hub/types"
 	"lachain-communication-hub/utils"
 	"time"
+
+	"github.com/juju/loggo"
+	"github.com/libp2p/go-libp2p-core/network"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 var handler = loggo.GetLogger("handler")
@@ -54,6 +55,7 @@ func handleHubConnection(peer *Peer, s network.Stream) {
 			peer.removeFromConnected(remotePeer.PublicKey)
 			return
 		}
+		log.Tracef("Adding channel for key %s", string(remotePeer.PublicKey))
 		peer.mutex.Lock()
 		peer.msgChannels[remotePeer.PublicKey] = msgChannel
 		peer.mutex.Unlock()
