@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"io"
+
 	"lachain-communication-hub/config"
 	server "lachain-communication-hub/grpc"
 	"lachain-communication-hub/host"
@@ -15,7 +15,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
-	"github.com/magiconair/properties/assert"
+
 	"google.golang.org/grpc"
 
 	pb "lachain-communication-hub/grpc/protobuf"
@@ -37,64 +37,68 @@ func TestCommunication(t *testing.T) {
 	//pub2 := "037f447253723035341f32d2bf8c5dde284f677157c1262bd5849174d41b98e03d"
 	priv_key1 := host.GetPrivateKeyForHost("_h1")
 	id1, _ := p2p_peer.IDFromPrivateKey(priv_key1)
+	grpcAddress1 := p2p_peer.Encode(id1) + "@" + address1
+	config.SetBootstrapAddress(grpcAddress1)
+	peer1 := peer.New(priv_key1)
+	server1 := server.New(":50005", peer1)
+	go server1.Serve()
+
 	priv_key2 := host.GetPrivateKeyForHost("_h2")
 	id2, _ := p2p_peer.IDFromPrivateKey(priv_key2)
+	grpcAddress2 := p2p_peer.Encode(id2) + "@" + address2
+	config.SetBootstrapAddress(grpcAddress2)
+	peer2 := peer.New(priv_key2)
+	server2 := server.New(":50003", peer2)
+	go server2.Serve()
+
 	//config.SetBootstrapAddress(address2)
 	// connect clients
-	conn1, _ := makeServerPeer("_h1", ":50005", address1)
-	defer conn1.Close()
-	config.SetBootstrapAddress(p2p_peer.Encode(id1) + "@" + address1)
+	//conn1, _ := makeServerPeer("_h1", ":50005", address1)
+	//defer conn1.Close()
 
-	conn2, pub := makeServerPeer("_h2", ":50003", address2)
-	defer conn2.Close()
-	config.SetBootstrapAddress(p2p_peer.Encode(id2) + "@" + address2)
+	//conn2, pub := makeServerPeer("_h2", ":50003", address2)
+	//defer conn2.Close()
 
-	client := pb.NewCommunicationHubClient(conn1)
-	stream, err := client.Communicate(context.Background())
-	if err != nil {
-		log.Errorf("open stream error %v", err)
-	}
+	//client := pb.NewCommunicationHubClient(peer1)
+	//stream, err := client.Communicate(context.Background())
+	//if err != nil {
+	//log.Errorf("open stream error %v", err)
+	//}
 
 	done := make(chan bool)
 
 	go func() {
-		req := pb.InboundMessage{
-			PublicKey: pub,
-			Data:      []byte("ping/n"),
-		}
-		if err := stream.Send(&req); err != nil {
-			log.Errorf("can not send %v", err)
-		}
+		peer1.BroadcastMessage([]byte("ping"))
 	}()
 
-	go func() {
-		for {
-			resp, err := stream.Recv()
-			if err == io.EOF {
-				fmt.Println("EOF")
-				return
-			}
-			if err != nil {
-				log.Errorf("can not receive %v", err)
-			}
-			expectedResponse := []byte("73515441561657fdh437h7fh4387f7834")
-			log.Infof("received grpc message: %s", string(resp.Data))
-			log.Infof("len, %v", len(expectedResponse))
-			log.Infof("len, %v", len(resp.Data))
-			diff := false
-			for i, b := range resp.Data {
-				if b != expectedResponse[i] {
-					fmt.Printf("i %v\n", i)
-					diff = true
-					break
-				}
-			}
-			assert.Equal(t, diff, false)
-			assert.Equal(t, len(expectedResponse), len(resp.Data))
-			stream.CloseSend()
-			done <- true
-		}
-	}()
+	// go func() {
+	// 	for {
+	// 		resp, err := stream.Recv()
+	// 		if err == io.EOF {
+	// 			fmt.Println("EOF")
+	// 			return
+	// 		}
+	// 		if err != nil {
+	// 			log.Errorf("can not receive %v", err)
+	// 		}
+	// 		expectedResponse := []byte("73515441561657fdh437h7fh4387f7834")
+	// 		log.Infof("received grpc message: %s", string(resp.Data))
+	// 		log.Infof("len, %v", len(expectedResponse))
+	// 		log.Infof("len, %v", len(resp.Data))
+	// 		diff := false
+	// 		for i, b := range resp.Data {
+	// 			if b != expectedResponse[i] {
+	// 				fmt.Printf("i %v\n", i)
+	// 				diff = true
+	// 				break
+	// 			}
+	// 		}
+	// 		assert.Equal(t, diff, false)
+	// 		assert.Equal(t, len(expectedResponse), len(resp.Data))
+	// 		stream.CloseSend()
+	// 		done <- true
+	// 	}
+	// }()
 
 	<-done
 	fmt.Println("finish")
