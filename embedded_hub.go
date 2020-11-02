@@ -1,5 +1,6 @@
 package main
 
+//#include <string.h>
 import "C"
 import (
 	"bytes"
@@ -33,18 +34,21 @@ func StartHub(
 func GetKey(buffer unsafe.Pointer, maxLength C.int) C.int {
 	log.Tracef("Received: Get Key Request")
 	id := localPeer.GetId()
-	if len(id) > maxLength {
+	if len(id) > int(maxLength) {
 		return 0
 	}
 	C.memcpy(buffer, unsafe.Pointer(&id[0]), C.size_t(len(id)))
-	return len(id)
+	return C.int(len(id))
 }
 
 //export Init
-func Init(signaturePtr unsafe.Pointer, signatureLength C.int) C.bool {
+func Init(signaturePtr unsafe.Pointer, signatureLength C.int) C.int {
 	log.Tracef("Received: Init Request")
 	signature := C.GoBytes(signaturePtr, signatureLength)
-	return localPeer.Register(signature)
+	if localPeer.Register(signature) {
+		return 1
+	}
+	return 0
 }
 
 //export SendMessage

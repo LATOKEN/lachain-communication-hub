@@ -64,7 +64,7 @@ namespace Lachain.CommunicationHub.Net
             {
                 fixed (byte* signaturePtr = signature)
                 {
-                    return Imports.HubInit.Value(signaturePtr, signature.Length);
+                    return Imports.HubInit.Value(signaturePtr, signature.Length) == 1;
                 }
             }
         }

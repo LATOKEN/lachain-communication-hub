@@ -11,7 +11,7 @@ namespace Lachain.CommunicationHub.Net
     public unsafe delegate int HubGetKey(byte* buffer, int maxLength);
 
     [SymbolName("Init")]
-    public unsafe delegate bool HubInit(byte* signature, int signatureLength);
+    public unsafe delegate int HubInit(byte* signature, int signatureLength);
 
     [SymbolName("SendMessage")]
     public unsafe delegate int HubSendMessage(
