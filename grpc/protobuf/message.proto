@@ -5,8 +5,8 @@ option go_package = "github.com/LAtoken/lachain-communication-hub/grpc/protobuf"
 package protobuf;
 
 service CommunicationHub {
-  rpc GetKey (GetHubIdRequest) returns (GetHubIdReply) {}
-  rpc Init (InitRequest) returns (InitReply) {}
+//  rpc GetKey (GetHubIdRequest) returns (GetHubIdReply) {}
+//  rpc Init (InitRequest) returns (InitReply) {}
   rpc Communicate(stream InboundMessage) returns (stream OutboundMessage) {}
 }
 
@@ -17,18 +17,4 @@ message InboundMessage {
 
 message OutboundMessage {
   bytes data = 1;
-}
-
-message InitRequest {
-  bytes signature = 1;
-}
-
-message InitReply {
-  bool result = 1;
-}
-
-message GetHubIdRequest {}
-
-message GetHubIdReply {
-  bytes id = 1;
 }

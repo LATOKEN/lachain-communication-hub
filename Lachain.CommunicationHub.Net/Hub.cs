@@ -1,14 +1,17 @@
 using System;
+using System.Linq;
 using System.Text;
 
 namespace Lachain.CommunicationHub.Net
 {
     public class Hub
     {
-        internal readonly Lazy<StartHub> StartHub;
-        internal readonly Lazy<StopHub> StopHub;
-        internal readonly Lazy<LogLevel> LogLevel;
-        internal readonly Lazy<SendMessage> SendMessage;
+        internal readonly Lazy<HubStart> StartHub;
+        internal readonly Lazy<HubStop> StopHub;
+        internal readonly Lazy<HubLogLevel> LogLevel;
+        internal readonly Lazy<HubSendMessage> SendMessage;
+        internal readonly Lazy<HubInit> HubInit;
+        internal readonly Lazy<HubGetKey> HubGetKey;
 
 
         const string Lib = "hub";
@@ -21,10 +24,12 @@ namespace Lachain.CommunicationHub.Net
         private Hub()
         {
             // load all delegates
-            StartHub = LazyDelegate<StartHub>();
-            StopHub = LazyDelegate<StopHub>();
-            LogLevel = LazyDelegate<LogLevel>();
-            SendMessage = LazyDelegate<SendMessage>();
+            StartHub = LazyDelegate<HubStart>();
+            StopHub = LazyDelegate<HubStop>();
+            LogLevel = LazyDelegate<HubLogLevel>();
+            SendMessage = LazyDelegate<HubSendMessage>();
+            HubInit = LazyDelegate<HubInit>();
+            HubGetKey = LazyDelegate<HubGetKey>();
         }
 
         Lazy<TDelegate> LazyDelegate<TDelegate>()
@@ -49,6 +54,31 @@ namespace Lachain.CommunicationHub.Net
                         grpcAddressPtr, grpcAddressBytes.Length,
                         bootstrapAddressPtr, bootstrapAddressBytes.Length
                     );
+                }
+            }
+        }
+
+        public static bool Init(byte[] signature)
+        {
+            unsafe
+            {
+                fixed (byte* signaturePtr = signature)
+                {
+                    return Imports.HubInit.Value(signaturePtr, signature.Length);
+                }
+            }
+        }
+
+        public byte[] GetKey()
+        {
+            const int maxKeyLen = 100;
+            var key = new byte[maxKeyLen];
+            unsafe
+            {
+                fixed (byte* keyPtr = key)
+                {
+                    var result = Imports.HubGetKey.Value(keyPtr, maxKeyLen);
+                    return key.Take(result).ToArray();
                 }
             }
         }

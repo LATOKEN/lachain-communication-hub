@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"bytes"
-	"context"
 	"encoding/hex"
 	"fmt"
 	"github.com/juju/loggo"
@@ -28,21 +27,6 @@ type Server struct {
 	peer       *peer.Peer
 	grpcServer *grpc.Server
 	Serve      func()
-}
-
-func (s *Server) GetKey(ctx context.Context, in *pb.GetHubIdRequest) (*pb.GetHubIdReply, error) {
-	log.Tracef("Received: Get Key Request")
-	return &pb.GetHubIdReply{
-		Id: s.peer.GetId(),
-	}, nil
-}
-
-func (s *Server) Init(ctx context.Context, in *pb.InitRequest) (*pb.InitReply, error) {
-	log.Tracef("Received: Init Request")
-	result := s.peer.Register(in.GetSignature())
-	return &pb.InitReply{
-		Result: result,
-	}, nil
 }
 
 func (s *Server) Communicate(stream pb.CommunicationHub_CommunicateServer) error {

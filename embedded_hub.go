@@ -29,6 +29,24 @@ func StartHub(
 	grpcServer.Serve()
 }
 
+//export GetKey
+func GetKey(buffer unsafe.Pointer, maxLength C.int) C.int {
+	log.Tracef("Received: Get Key Request")
+	id := localPeer.GetId()
+	if len(id) > maxLength {
+		return 0
+	}
+	C.memcpy(buffer, unsafe.Pointer(&id[0]), C.size_t(len(id)))
+	return len(id)
+}
+
+//export Init
+func Init(signaturePtr unsafe.Pointer, signatureLength C.int) C.bool {
+	log.Tracef("Received: Init Request")
+	signature := C.GoBytes(signaturePtr, signatureLength)
+	return localPeer.Register(signature)
+}
+
 //export SendMessage
 func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Pointer, dataLen C.int) {
 	pubKey := C.GoBytes(pubKeyPtr, pubKeyLen)
