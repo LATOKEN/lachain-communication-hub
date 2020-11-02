@@ -69,7 +69,7 @@ namespace Lachain.CommunicationHub.Net
             }
         }
 
-        public byte[] GetKey()
+        public static byte[] GetKey()
         {
             const int maxKeyLen = 100;
             var key = new byte[maxKeyLen];
