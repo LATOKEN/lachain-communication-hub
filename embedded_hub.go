@@ -33,6 +33,9 @@ func StartHub(
 //export GetKey
 func GetKey(buffer unsafe.Pointer, maxLength C.int) C.int {
 	log.Tracef("Received: Get Key Request")
+	if localPeer == nil {
+		return 0
+	}
 	id := localPeer.GetId()
 	if id == nil || len(id) > int(maxLength) {
 		return 0
