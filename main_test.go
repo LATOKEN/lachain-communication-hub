@@ -20,6 +20,7 @@ import (
 
 	pb "lachain-communication-hub/grpc/protobuf"
 
+	p2p_crypto "github.com/libp2p/go-libp2p-core/crypto"
 	p2p_peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
@@ -32,22 +33,18 @@ var log = loggo.GetLogger("builder.go")
 
 func TestCommunication(t *testing.T) {
 	loggo.ConfigureLoggers("<root>=TRACE")
-	// register addresses as bootstraps
-	//pub1 := "037f447253723035341f32d2bf8c5dde284f677157c1262bd5849174d41b98e03d"
-	//pub2 := "037f447253723035341f32d2bf8c5dde284f677157c1262bd5849174d41b98e03d"
-	priv_key1 := host.GetPrivateKeyForHost("_h1")
-	id1, _ := p2p_peer.IDFromPrivateKey(priv_key1)
-	priv_key2 := host.GetPrivateKeyForHost("_h2")
-	id2, _ := p2p_peer.IDFromPrivateKey(priv_key2)
-	//config.SetBootstrapAddress(address2)
-	// connect clients
-	conn1, _ := makeServerPeer("_h1", ":50005", address1)
-	defer conn1.Close()
-	config.SetBootstrapAddress(p2p_peer.Encode(id1) + "@" + address1)
 
-	conn2, pub := makeServerPeer("_h2", ":50003", address2)
+	priv_key1 := host.GetPrivateKeyForHost("_h1")
+	priv_key2 := host.GetPrivateKeyForHost("_h2")
+
+	registerBootstrap(priv_key1, ":41011")
+	registerBootstrap(priv_key2, ":41012")
+
+	conn1, _ := makeServerPeer(priv_key1, ":50005", address1)
+	defer conn1.Close()
+
+	conn2, pub := makeServerPeer(priv_key1, ":50003", address2)
 	defer conn2.Close()
-	config.SetBootstrapAddress(p2p_peer.Encode(id2) + "@" + address2)
 
 	client := pb.NewCommunicationHubClient(conn1)
 	stream, err := client.Communicate(context.Background())
@@ -60,7 +57,7 @@ func TestCommunication(t *testing.T) {
 	go func() {
 		req := pb.InboundMessage{
 			PublicKey: pub,
-			Data:      []byte("ping/n"),
+			Data:      []byte("ping"),
 		}
 		if err := stream.Send(&req); err != nil {
 			log.Errorf("can not send %v", err)
@@ -100,14 +97,21 @@ func TestCommunication(t *testing.T) {
 	fmt.Println("finish")
 }
 
-func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, []byte) {
-	priv_key := host.GetPrivateKeyForHost(id)
+func registerBootstrap(prv p2p_crypto.PrivKey, port string) {
+	id, _ := p2p_peer.IDFromPrivateKey(prv)
+	bootstrapAddress := p2p_peer.Encode(id) + "@127.0.0.1" + port
+	config.SetBootstrapAddress(bootstrapAddress)
+
+	log.Debugf("Register Bootstrap address: %s", bootstrapAddress)
+}
+
+func makeServerPeer(priv_key p2p_crypto.PrivKey, port string, address string) (*grpc.ClientConn, []byte) {
 	p := peer.New(priv_key)
 	serv := server.New(port, p)
 
 	go serv.Serve()
 
-	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
+	conn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
 		log.Errorf("did not connect: %v", err)
 	}
@@ -145,5 +149,6 @@ func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, [
 	cancel()
 
 	log.Debugf("init result: %v", initR.Result)
+
 	return conn, pub
 }
