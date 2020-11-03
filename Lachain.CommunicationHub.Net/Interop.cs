@@ -1,10 +1,7 @@
 namespace Lachain.CommunicationHub.Net
 {
     [SymbolName("StartHub")]
-    public unsafe delegate int HubStart(
-        byte* grpcAddress, int grpcAddressLen,
-        byte* bootstrapAddress, int bootstrapAddressLen
-    );
+    public unsafe delegate int HubStart(byte* bootstrapAddress, int bootstrapAddressLen);
 
 
     [SymbolName("GetKey")]

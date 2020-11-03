@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Net;
 using System.Text;
 
 namespace Lachain.CommunicationHub.Net
@@ -44,17 +43,14 @@ namespace Lachain.CommunicationHub.Net
             );
         }
 
-        public static void Start(string grpcAddress, string bootstrapAddress)
+        public static void Start(string bootstrapAddress)
         {
             unsafe
             {
-                var grpcAddressBytes = Encoding.UTF8.GetBytes(grpcAddress);
                 var bootstrapAddressBytes = Encoding.UTF8.GetBytes(bootstrapAddress);
-                fixed (byte* grpcAddressPtr = grpcAddressBytes)
                 fixed (byte* bootstrapAddressPtr = bootstrapAddressBytes)
                 {
                     Imports.StartHub.Value(
-                        grpcAddressPtr, grpcAddressBytes.Length,
                         bootstrapAddressPtr, bootstrapAddressBytes.Length
                     );
                 }

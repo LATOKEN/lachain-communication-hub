@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
   <metadata>
     <id>Lachain.CommunicationHub.Native</id>
-    <version>0.0.41</version>
+    <version>0.0.42</version>
     <authors>Skird</authors>
     <owners>Skird</owners>
     <license type="expression">MIT</license>
