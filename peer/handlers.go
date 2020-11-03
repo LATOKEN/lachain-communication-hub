@@ -93,7 +93,7 @@ func processMessage(localPeer *Peer, s network.Stream, msg []byte) error {
 		return nil
 	}
 	handler.Tracef("received msg from peer: %s, message len = %d", s.Conn().RemotePeer(), len(msg))
-	localPeer.grpcMsgHandler(msg)
+	localPeer.msgHandler(msg)
 	switch string(msg) {
 	case "ping":
 		err := communication.Write(s, []byte("73515441561657fdh437h7fh4387f7834"))

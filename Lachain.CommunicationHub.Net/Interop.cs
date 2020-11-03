@@ -1,22 +1,30 @@
-// ReSharper disable InconsistentNaming
-
 namespace Lachain.CommunicationHub.Net
 {
-    [SymbolName(nameof(StartHub))]
-    public unsafe delegate int StartHub(
+    [SymbolName("StartHub")]
+    public unsafe delegate int HubStart(
         byte* grpcAddress, int grpcAddressLen,
         byte* bootstrapAddress, int bootstrapAddressLen
     );
 
-    [SymbolName(nameof(SendMessage))]
-    public unsafe delegate int SendMessage(
+
+    [SymbolName("GetKey")]
+    public unsafe delegate int HubGetKey(byte* buffer, int maxLength);
+
+    [SymbolName("Init")]
+    public unsafe delegate int HubInit(byte* signature, int signatureLength);
+
+    [SymbolName("SendMessage")]
+    public unsafe delegate int HubSendMessage(
         byte* pubKey, int pubKeyLen,
         byte* data, int dataLen
     );
+    
+    [SymbolName("GetMessages")]
+    public unsafe delegate int HubGetMessages(byte* buffer, int maxLen);
 
-    [SymbolName(nameof(StopHub))]
-    public delegate bool StopHub();
+    [SymbolName("StopHub")]
+    public delegate bool HubStop();
 
-    [SymbolName(nameof(LogLevel))]
-    public unsafe delegate bool LogLevel(byte* str, int len);
+    [SymbolName("LogLevel")]
+    public unsafe delegate bool HubLogLevel(byte* str, int len);
 }

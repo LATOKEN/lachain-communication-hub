@@ -29,17 +29,16 @@ const MaxTryToConnect = 3
 var log = loggo.GetLogger("peer")
 
 type Peer struct {
-	host           core.Host
-	hubStreams     map[string]network.Stream
-	mutex          *sync.Mutex
-	grpcMsgHandler func([]byte)
-	running        int32
-	msgChannels    map[string]chan []byte
-	PublicKey      string
-	Signature      []byte
+	host        core.Host
+	hubStreams  map[string]network.Stream
+	mutex       *sync.Mutex
+	msgHandler  func([]byte)
+	running     int32
+	msgChannels map[string]chan []byte
+	PublicKey   string
+	Signature   []byte
+	quit        chan struct{}
 }
-
-var globalQuit = make(chan struct{})
 
 func GRPCHandlerMock(msg []byte) {
 	//log.Tracef("Skipped received message in the mock...")
@@ -74,6 +73,7 @@ func New(priv_key crypto.PrivKey) *Peer {
 	localPeer.host = localHost
 	localPeer.mutex = mut
 	localPeer.running = 1
+	localPeer.quit = make(chan struct{})
 	localPeer.SetStreamHandlerFn(GRPCHandlerMock)
 
 	localPeer.host.SetStreamHandler("/register", registerHandlerForLocalPeer(localPeer))
@@ -96,7 +96,7 @@ func (localPeer *Peer) startOldMsgCleaner() {
 			select {
 			case <-ticker.C:
 				storage.RemoveOldPostponedMessages()
-			case <-globalQuit:
+			case <-localPeer.quit:
 				ticker.Stop()
 				return
 			}
@@ -368,7 +368,7 @@ func (localPeer *Peer) NewMsgChannel(publicKey string) chan []byte {
 					continue
 				}
 				storage.UpdateRegisteredPeerByPublicKey(publicKey)
-			case <-globalQuit:
+			case <-localPeer.quit:
 				log.Debugf("will no longer receive msgs from %s", publicKey)
 				return
 			}
@@ -403,7 +403,7 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) ([]byte, error)
 }
 
 func (localPeer *Peer) SetStreamHandlerFn(callback func(msg []byte)) {
-	localPeer.grpcMsgHandler = callback
+	localPeer.msgHandler = callback
 	log.Tracef("Messaged handling callback to (%p) is set for peer (%p)", callback, localPeer)
 }
 
@@ -416,9 +416,12 @@ func (localPeer *Peer) SetSignature(signature []byte) {
 }
 
 func (localPeer *Peer) GetId() []byte {
+	if localPeer.host == nil {
+		return nil
+	}
 	id, err := localPeer.host.ID().Marshal()
 	if err != nil {
-		panic(err)
+		return nil
 	}
 	return id
 }
@@ -653,7 +656,7 @@ func (localPeer *Peer) unlock() {
 
 func (localPeer *Peer) Stop() {
 	localPeer.lock()
-	close(globalQuit)
+	close(localPeer.quit)
 	defer localPeer.unlock()
 	atomic.StoreInt32(&localPeer.running, 0)
 	streamsLen := len(localPeer.hubStreams)

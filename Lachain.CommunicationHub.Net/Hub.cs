@@ -1,14 +1,19 @@
 using System;
+using System.Linq;
+using System.Net;
 using System.Text;
 
 namespace Lachain.CommunicationHub.Net
 {
     public class Hub
     {
-        internal readonly Lazy<StartHub> StartHub;
-        internal readonly Lazy<StopHub> StopHub;
-        internal readonly Lazy<LogLevel> LogLevel;
-        internal readonly Lazy<SendMessage> SendMessage;
+        internal readonly Lazy<HubStart> StartHub;
+        internal readonly Lazy<HubStop> StopHub;
+        internal readonly Lazy<HubLogLevel> LogLevel;
+        internal readonly Lazy<HubSendMessage> SendMessage;
+        internal readonly Lazy<HubGetMessages> GetMessages;
+        internal readonly Lazy<HubInit> HubInit;
+        internal readonly Lazy<HubGetKey> HubGetKey;
 
 
         const string Lib = "hub";
@@ -21,10 +26,13 @@ namespace Lachain.CommunicationHub.Net
         private Hub()
         {
             // load all delegates
-            StartHub = LazyDelegate<StartHub>();
-            StopHub = LazyDelegate<StopHub>();
-            LogLevel = LazyDelegate<LogLevel>();
-            SendMessage = LazyDelegate<SendMessage>();
+            StartHub = LazyDelegate<HubStart>();
+            StopHub = LazyDelegate<HubStop>();
+            LogLevel = LazyDelegate<HubLogLevel>();
+            SendMessage = LazyDelegate<HubSendMessage>();
+            GetMessages = LazyDelegate<HubGetMessages>();
+            HubInit = LazyDelegate<HubInit>();
+            HubGetKey = LazyDelegate<HubGetKey>();
         }
 
         Lazy<TDelegate> LazyDelegate<TDelegate>()
@@ -50,6 +58,77 @@ namespace Lachain.CommunicationHub.Net
                         bootstrapAddressPtr, bootstrapAddressBytes.Length
                     );
                 }
+            }
+        }
+
+        public static bool Init(byte[] signature)
+        {
+            unsafe
+            {
+                fixed (byte* signaturePtr = signature)
+                {
+                    return Imports.HubInit.Value(signaturePtr, signature.Length) == 1;
+                }
+            }
+        }
+
+        public static byte[] GetKey()
+        {
+            const int maxKeyLen = 100;
+            var key = new byte[maxKeyLen];
+            unsafe
+            {
+                fixed (byte* keyPtr = key)
+                {
+                    var result = Imports.HubGetKey.Value(keyPtr, maxKeyLen);
+                    return key.Take(result).ToArray();
+                }
+            }
+        }
+        
+        const int initialBufferSize = 1024 * 1024; // 1MiB
+        const int maxBufferSize = 32 * 1024 * 1024; // 32MiB
+        private static byte[] _buffer = new byte[initialBufferSize];
+
+        private static uint ParseLittleEndianInt32(Span<byte> span)
+        {
+            return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? span : span.ToArray().Reverse().ToArray());
+        }
+
+        public static byte[][] Get()
+        {
+            while (true)
+            {
+                int result;
+                unsafe
+                {
+                    fixed (byte* bufferPtr = _buffer)
+                    {
+                        result = Imports.GetMessages.Value(bufferPtr, _buffer.Length);
+                    }
+                }
+
+                if (result < 0) return Array.Empty<byte[]>();
+                if (result > 0)
+                {
+                    var ret = new byte[result][];
+                    var ptr = 0;
+                    for (var i = 0; i < result; ++i)
+                    {
+                        var len = (int) ParseLittleEndianInt32(_buffer.AsSpan().Slice(ptr, 4));
+                        ptr += 4;
+                        ret[i] = _buffer.AsSpan().Slice(ptr, len).ToArray();
+                        ptr += len;
+                    }
+
+                    return ret;
+                }
+
+                if (_buffer.Length * 2 > maxBufferSize)
+                {
+                    throw new Exception("Cannot read message from hub: max buffer size is too small");
+                }
+                _buffer = new byte[_buffer.Length * 2];
             }
         }
 
