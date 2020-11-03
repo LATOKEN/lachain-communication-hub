@@ -4,20 +4,26 @@ package main
 import "C"
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/enriquebris/goconcurrentqueue"
 	"github.com/juju/loggo"
 	"lachain-communication-hub/config"
-	server "lachain-communication-hub/grpc"
 	"lachain-communication-hub/peer"
 	"unsafe"
 )
 
 var localPeer *peer.Peer
-var grpcServer *server.Server
 
 var log = loggo.GetLogger("embedded_hub")
 var ZeroPub = make([]byte, 33)
+
+var messages = goconcurrentqueue.NewFIFO()
+
+func ProcessMessage(msg []byte) {
+	messages.Enqueue(msg)
+}
 
 //export StartHub
 func StartHub(
@@ -26,8 +32,7 @@ func StartHub(
 ) {
 	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen))
 	localPeer = peer.New("_h1")
-	grpcServer = server.New(C.GoStringN(grpcAddress, grpcAddressLen), localPeer)
-	grpcServer.Serve()
+	localPeer.SetStreamHandlerFn(ProcessMessage)
 }
 
 //export GetKey
@@ -42,6 +47,38 @@ func GetKey(buffer unsafe.Pointer, maxLength C.int) C.int {
 	}
 	C.memcpy(buffer, unsafe.Pointer(&id[0]), C.size_t(len(id)))
 	return C.int(len(id))
+}
+
+//export GetMessages
+func GetMessages(buffer unsafe.Pointer, maxLength C.int) C.int {
+	n := messages.GetLen()
+	if n == 0 {
+		return C.int(-1)
+	}
+	c := 0
+	ptr := uint32(0)
+	for i := 0; i < n; i++ {
+		msgP, err := messages.Get(0)
+		if err != nil {
+			return -1
+		}
+		msg := msgP.([]byte)
+		l := uint32(len(msg))
+		if ptr + uint32(4) > uint32(maxLength) {
+			break
+		}
+		err = messages.Remove(0)
+		if err != nil {
+			return -1
+		}
+		msg = append([]byte{0, 0, 0, 0}, msg...)
+		binary.LittleEndian.PutUint32(msg[:4], l)
+
+		C.memcpy(unsafe.Pointer(uintptr(buffer) + uintptr(ptr)), unsafe.Pointer(&msg[0]), C.size_t(l + 4))
+		ptr += l + 4
+		c += 1
+	}
+	return C.int(c)
 }
 
 //export Init
@@ -77,7 +114,6 @@ func LogLevel(s *C.char, len C.int) {
 func StopHub() {
 	fmt.Println("Exit received")
 	localPeer.Stop()
-	grpcServer.Stop()
 }
 
 func main() {}

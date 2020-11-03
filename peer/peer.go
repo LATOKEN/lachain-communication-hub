@@ -27,14 +27,14 @@ const MaxTryToConnect = 3
 var log = loggo.GetLogger("peer")
 
 type Peer struct {
-	host           core.Host
-	hubStreams     map[string]network.Stream
-	mutex          *sync.Mutex
-	grpcMsgHandler func([]byte)
-	running        int32
-	msgChannels    map[string]chan []byte
-	PublicKey      string
-	Signature      []byte
+	host        core.Host
+	hubStreams  map[string]network.Stream
+	mutex       *sync.Mutex
+	msgHandler  func([]byte)
+	running     int32
+	msgChannels map[string]chan []byte
+	PublicKey   string
+	Signature   []byte
 }
 
 var globalQuit = make(chan struct{})
@@ -400,7 +400,7 @@ func (localPeer *Peer) ReceiveResponseFromPeer(publicKey string) ([]byte, error)
 }
 
 func (localPeer *Peer) SetStreamHandlerFn(callback func(msg []byte)) {
-	localPeer.grpcMsgHandler = callback
+	localPeer.msgHandler = callback
 	log.Tracef("Messaged handling callback to (%p) is set for peer (%p)", callback, localPeer)
 }
 

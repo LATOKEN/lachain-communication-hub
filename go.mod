@@ -2,6 +2,7 @@ module lachain-communication-hub
 
 require (
 	github.com/btcsuite/btcd v0.21.0-beta // indirect
+	github.com/enriquebris/goconcurrentqueue v0.6.0
 	github.com/ethereum/go-ethereum v1.9.20
 	github.com/glendc/go-external-ip v0.0.0-20200601212049-c872357d968e
 	github.com/golang/protobuf v1.4.1
