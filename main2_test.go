@@ -1,24 +1,15 @@
 package main_test
 
 import (
-	"context"
-	"encoding/hex"
 	"fmt"
 
 	"lachain-communication-hub/config"
 	server "lachain-communication-hub/grpc"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer"
-	"lachain-communication-hub/utils"
 	"testing"
-	"time"
 
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
-
-	"google.golang.org/grpc"
-
-	pb "lachain-communication-hub/grpc/protobuf"
 
 	p2p_peer "github.com/libp2p/go-libp2p-core/peer"
 )
@@ -102,52 +93,4 @@ func TestCommunication(t *testing.T) {
 
 	<-done
 	fmt.Println("finish")
-}
-
-func makeServerPeer(id string, port string, address string) (*grpc.ClientConn, []byte) {
-	priv_key := host.GetPrivateKeyForHost(id)
-	p := peer.New(priv_key)
-	serv := server.New(port, p)
-
-	go serv.Serve()
-
-	conn, err := grpc.Dial(address, grpc.WithInsecure(), grpc.WithBlock())
-	if err != nil {
-		log.Errorf("did not connect: %v", err)
-	}
-
-	c := pb.NewCommunicationHubClient(conn)
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	getKeyResult, err := c.GetKey(ctx, &pb.GetHubIdRequest{})
-	if err != nil {
-		log.Errorf("could not GetKey: %v", err)
-	}
-	cancel()
-
-	prv, err := crypto.GenerateKey()
-	if err != nil {
-		log.Errorf("could not GenerateKey: %v", err)
-	}
-	pub := crypto.CompressPubkey(&prv.PublicKey)
-
-	fmt.Println("pubKey", hex.EncodeToString(pub))
-
-	signature, err := utils.LaSign(getKeyResult.Id, prv)
-	if err != nil {
-		panic(err)
-	}
-
-	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
-
-	initR, err := c.Init(ctx, &pb.InitRequest{
-		Signature: signature,
-	})
-	if err != nil {
-		log.Errorf("could not Init: %v", err)
-	}
-	cancel()
-
-	log.Debugf("init result: %v", initR.Result)
-	return conn, pub
 }
