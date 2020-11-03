@@ -18,6 +18,9 @@ namespace Lachain.CommunicationHub.Net
         byte* pubKey, int pubKeyLen,
         byte* data, int dataLen
     );
+    
+    [SymbolName("GetMessages")]
+    public unsafe delegate int HubGetMessages(byte* buffer, int maxLen);
 
     [SymbolName("StopHub")]
     public delegate bool HubStop();
