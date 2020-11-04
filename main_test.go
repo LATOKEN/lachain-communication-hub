@@ -158,3 +158,64 @@ func TestMassSend2Nodes(t *testing.T) {
 		t.Error("Failed to receive message in time")
 	}
 }
+
+func TestReconnect2Nodes(t *testing.T) {
+	loggo.ConfigureLoggers("<root>=TRACE")
+
+	priv_key1, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+	priv_key2, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+
+	registerBootstrap(priv_key1, ":41011")
+	registerBootstrap(priv_key2, ":41012")
+
+	p1, _ := makeServerPeer(priv_key1)
+	defer p1.Stop()
+
+	p2, pub2 := makeServerPeer(priv_key2)
+	defer p2.Stop()
+
+	done := make(chan bool)
+	fail := make(chan bool)
+
+	goldenMessage := []byte("ping")
+	counter := 0
+
+	handler := func(msg []byte) {
+		if !bytes.Equal(msg, goldenMessage) {
+			log.Errorf("bad response")
+			fail <- true
+		}
+		assert.Equal(t, msg, goldenMessage)
+		if counter++; counter == 10000 {
+			done <- true
+		}
+	}
+
+	p2.SetStreamHandlerFn(handler)
+	pub2str := hex.EncodeToString(pub2)
+	for i := 0; i < 10000; i++ {
+		p1.SendMessageToPeer(pub2str, goldenMessage, true)
+	}
+
+	go func() {
+		for {
+			time.Sleep(100 * time.Millisecond)
+			p2.Stop()
+			p2, _ = makeServerPeer(priv_key2)
+			p2.SetStreamHandlerFn(handler)
+		}
+	}()
+
+	ticker := time.NewTicker(time.Minute)
+	select {
+	case <-done:
+		ticker.Stop()
+		log.Infof("Finished")
+	case <-fail:
+		ticker.Stop()
+		log.Errorf("Failed to process nessages")
+	case <-ticker.C:
+		log.Errorf("Failed to receive all messages in time")
+		t.Error("Failed to receive message in time")
+	}
+}
