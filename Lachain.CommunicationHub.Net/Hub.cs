@@ -111,8 +111,10 @@ namespace Lachain.CommunicationHub.Net
                     var ptr = 0;
                     for (var i = 0; i < result; ++i)
                     {
+                        if (ptr + 4 > _buffer.Length) throw new Exception("Buffer overflow");
                         var len = (int) ParseLittleEndianInt32(_buffer.AsSpan().Slice(ptr, 4));
                         ptr += 4;
+                        if (ptr + len > _buffer.Length) throw new Exception("Buffer overflow");
                         ret[i] = _buffer.AsSpan().Slice(ptr, len).ToArray();
                         ptr += len;
                     }
