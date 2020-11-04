@@ -656,8 +656,12 @@ func (localPeer *Peer) unlock() {
 
 func (localPeer *Peer) Stop() {
 	localPeer.lock()
-	close(localPeer.quit)
 	defer localPeer.unlock()
+	if localPeer.running == 0 {
+		return
+	}
+	close(localPeer.quit)
+	localPeer.running = 0
 	atomic.StoreInt32(&localPeer.running, 0)
 	streamsLen := len(localPeer.hubStreams)
 	i := 0
