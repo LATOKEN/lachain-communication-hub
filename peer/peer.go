@@ -284,7 +284,7 @@ func (localPeer *Peer) SendMessageToPeer(publicKey string, msg []byte, ensureSen
 	log.Tracef("Sending message to peer %s message length %d", publicKey, len(msg))
 
 	localPeer.lock()
-	log.Tracef("Peer's channels: [%q]", localPeer.msgChannels)
+	//log.Tracef("Peer's channels: [%q]", localPeer.msgChannels)
 	msgChannel, ok := localPeer.msgChannels[publicKey]
 	localPeer.unlock()
 

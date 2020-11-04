@@ -64,33 +64,33 @@ func GetMessages(buffer unsafe.Pointer, maxLength C.int) C.int {
 	}
 	c := 0
 	ptr := uint32(0)
-	log.Tracef("GetMessages sending %d messages", n)
+	//log.Tracef("GetMessages sending %d messages", n)
 	for i := 0; i < n; i++ {
 		msgP, err := messages.Get(0)
 		if err != nil {
-			log.Errorf("Failed to fetch message %d", i)
+			//log.Errorf("Failed to fetch message %d", i)
 			return -1
 		}
 		msg := msgP.([]byte)
 		l := uint32(len(msg))
 		if ptr+l+uint32(4) > uint32(maxLength) {
-			log.Errorf("Not sending message %d, overflow", i)
+			//log.Errorf("Not sending message %d, overflow", i)
 			break
 		}
 		err = messages.Remove(0)
 		if err != nil {
-			log.Errorf("Can't remove message %d", i)
+			//log.Errorf("Can't remove message %d", i)
 			return -1
 		}
 		msg = append([]byte{0, 0, 0, 0}, msg...)
 		binary.LittleEndian.PutUint32(msg[:4], l)
 
-		log.Tracef("Writing 4 + %d bytes to buffer[%d..%d)", l, ptr, ptr + l + 4)
+		//log.Tracef("Writing 4 + %d bytes to buffer[%d..%d)", l, ptr, ptr + l + 4)
 		C.memcpy(unsafe.Pointer(uintptr(buffer)+uintptr(ptr)), unsafe.Pointer(&msg[0]), C.size_t(l+4))
 		ptr += l + 4
 		c += 1
 	}
-	log.Tracef("Wrote overall %d messages, %d bytes", c, ptr)
+	log.Tracef("GetMessages sending overall %d messages, %d bytes", c, ptr)
 	return C.int(c)
 }
 
