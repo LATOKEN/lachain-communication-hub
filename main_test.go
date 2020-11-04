@@ -9,6 +9,7 @@ import (
 	"lachain-communication-hub/peer"
 	"lachain-communication-hub/utils"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
@@ -52,8 +53,15 @@ func TestSingleSend(t *testing.T) {
 	p2.SetStreamHandlerFn(handler)
 	p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage, true)
 
-	<-done
-	log.Infof("Finished")
+	ticker := time.NewTicker(time.Minute)
+	select {
+	case <-done:
+		ticker.Stop()
+		log.Infof("Finished")
+	case <-ticker.C:
+		log.Errorf("Failed to receive message in time")
+		t.Error("Failed to receive message in time")
+	}
 }
 
 func registerBootstrap(prv p2p_crypto.PrivKey, port string) {
