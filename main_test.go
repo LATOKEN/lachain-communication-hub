@@ -219,3 +219,50 @@ func TestReconnect2Nodes(t *testing.T) {
 		t.Error("Failed to receive message in time")
 	}
 }
+
+func TestBigMessage(t *testing.T) {
+	loggo.ConfigureLoggers("<root>=TRACE")
+
+	priv_key1, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+	priv_key2, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+
+	registerBootstrap(priv_key1, ":41011")
+	registerBootstrap(priv_key2, ":41012")
+
+	p1, _ := makeServerPeer(priv_key1)
+	defer p1.Stop()
+
+	p2, pub2 := makeServerPeer(priv_key2)
+	defer p2.Stop()
+
+	done := make(chan bool)
+
+	goldenMessage := make([]byte, 6000, 6000)
+	for i := 0; i < 6000; i++ {
+		goldenMessage[i] = byte(i)
+	}
+
+	handler := func(msg []byte) {
+		log.Infof("received message: %s", string(msg))
+		log.Infof("len, %v", len(goldenMessage))
+		log.Infof("len, %v", len(msg))
+		if !bytes.Equal(msg, goldenMessage) {
+			log.Errorf("bad response")
+		}
+		assert.Equal(t, msg, goldenMessage)
+		done <- true
+	}
+
+	p2.SetStreamHandlerFn(handler)
+	p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage, true)
+
+	ticker := time.NewTicker(time.Minute)
+	select {
+	case <-done:
+		ticker.Stop()
+		log.Infof("Finished")
+	case <-ticker.C:
+		log.Errorf("Failed to receive message in time")
+		t.Error("Failed to receive message in time")
+	}
+}
