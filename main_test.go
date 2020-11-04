@@ -2,27 +2,28 @@ package main_test
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"lachain-communication-hub/config"
+	"lachain-communication-hub/peer"
+	"lachain-communication-hub/utils"
+	"testing"
+
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
 	p2p_crypto "github.com/libp2p/go-libp2p-core/crypto"
 	p2p_peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/magiconair/properties/assert"
-	"lachain-communication-hub/config"
-	"lachain-communication-hub/host"
-	"lachain-communication-hub/peer"
-	"lachain-communication-hub/utils"
-	"testing"
 )
 
 var log = loggo.GetLogger("builder.go")
 
-func TestCommunication(t *testing.T) {
+func TestSingleSend(t *testing.T) {
 	loggo.ConfigureLoggers("<root>=TRACE")
 
-	priv_key1 := host.GetPrivateKeyForHost("_h1")
-	priv_key2 := host.GetPrivateKeyForHost("_h2")
+	priv_key1, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+	priv_key2, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
 
 	registerBootstrap(priv_key1, ":41011")
 	registerBootstrap(priv_key2, ":41012")
