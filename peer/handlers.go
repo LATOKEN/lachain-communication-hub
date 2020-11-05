@@ -56,9 +56,7 @@ func handleHubConnection(peer *Peer, s network.Stream) {
 			return
 		}
 		log.Tracef("Adding channel for key %s", string(remotePeer.PublicKey))
-		peer.mutex.Lock()
-		peer.msgChannels[remotePeer.PublicKey] = msgChannel
-		peer.mutex.Unlock()
+		peer.SetMsgChannel(remotePeer.PublicKey, msgChannel)
 	}
 
 	storage.SetPublicKeyConnected(remotePeer.PublicKey, true)
