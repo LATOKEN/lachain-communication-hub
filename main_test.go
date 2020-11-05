@@ -76,7 +76,7 @@ func TestSingleSend(t *testing.T) {
 
 	done := make(chan bool)
 
-	goldenMessage := []byte("ping")
+	goldenMessage := []byte("dfstrdfgcrjtdg")
 
 	handler := func(msg []byte) {
 		log.Infof("received message: %s", string(msg))
@@ -121,7 +121,7 @@ func TestMassSend2Nodes(t *testing.T) {
 	done := make(chan bool)
 	fail := make(chan bool)
 
-	goldenMessage := []byte("ping")
+	goldenMessage := []byte("fgdghfghfhgghfhj")
 	counter := 0
 
 	handler := func(msg []byte) {
@@ -177,7 +177,7 @@ func TestReconnect2Nodes(t *testing.T) {
 	done := make(chan bool)
 	fail := make(chan bool)
 
-	goldenMessage := []byte("ping")
+	goldenMessage := []byte("fgdghfhjgjkjkh")
 	counter := 0
 
 	handler := func(msg []byte) {
@@ -267,7 +267,7 @@ func TestBigMessage(t *testing.T) {
 func TestConcurrentBootstraps(t *testing.T) {
 	loggo.ConfigureLoggers("<root>=TRACE")
 
-	repeatCount := 5
+	repeatCount := 10
 
 	peers := make([]*peer.Peer, 0)
 	pub_keys := make([][]byte, 0)
@@ -277,12 +277,12 @@ func TestConcurrentBootstraps(t *testing.T) {
 	done := make(chan bool)
 	fail := make(chan bool)
 
-	goldenMessage := []byte("ping")
+	goldenMessage := []byte("ghdhgfhgfh")
 
 	handler := func(msg []byte) {
+		log.Infof("[%s], %x\n", msg, msg)
 		if !bytes.Equal(msg, goldenMessage) {
 			log.Errorf("bad response")
-			log.Infof("[%s], %x\n", msg, msg)
 			fail <- true
 		} else {
 			counter <- true
@@ -292,7 +292,7 @@ func TestConcurrentBootstraps(t *testing.T) {
 	for i := 0; i < repeatCount; i++ {
 		go func(idx int) {
 			priv_key, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
-			registerBootstrap(priv_key, fmt.Sprintf(":%d", 41011+idx))
+			registerBootstrap(priv_key, fmt.Sprintf(":%d", 62000+idx))
 			p, k := makeServerPeer(priv_key)
 			p.SetStreamHandlerFn(handler)
 			peers = append(peers, p)
@@ -313,16 +313,20 @@ func TestConcurrentBootstraps(t *testing.T) {
 	}
 
 	// send repeatCount - 1 messages
+	sent := 0
 	for i, p := range peers {
 		if i == 0 {
 			continue
 		}
-		p.SendMessageToPeer(hex.EncodeToString(pub_keys[i-1]), goldenMessage, true)
+		pkstr := hex.EncodeToString(pub_keys[i-1])
+		if p.SendMessageToPeer(pkstr, goldenMessage, true) {
+			sent++
+		}
 	}
 
 	// wait for all messages during a minute
 	go func() {
-		for i := 0; i < repeatCount-1; i++ {
+		for i := 0; i < sent; i++ {
 			<-counter
 		}
 		done <- true
