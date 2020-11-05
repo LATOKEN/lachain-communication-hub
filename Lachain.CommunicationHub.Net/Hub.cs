@@ -83,7 +83,7 @@ namespace Lachain.CommunicationHub.Net
         }
         
         const int initialBufferSize = 1024 * 1024; // 1MiB
-        const int maxBufferSize = 32 * 1024 * 1024; // 32MiB
+        // const int maxBufferSize = 32 * 1024 * 1024; // 32MiB
         private static byte[] _buffer = new byte[initialBufferSize];
 
         private static uint ParseLittleEndianInt32(Span<byte> span)
@@ -122,10 +122,10 @@ namespace Lachain.CommunicationHub.Net
                     return ret;
                 }
 
-                if (_buffer.Length * 2 > maxBufferSize)
-                {
-                    throw new Exception("Cannot read message from hub: max buffer size is too small");
-                }
+                // if (_buffer.Length * 2 > maxBufferSize)
+                // {
+                //     throw new Exception("Cannot read message from hub: max buffer size is too small");
+                // }
                 _buffer = new byte[_buffer.Length * 2];
             }
         }
