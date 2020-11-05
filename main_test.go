@@ -137,9 +137,9 @@ func TestMassSend2Nodes(t *testing.T) {
 
 	p2.SetStreamHandlerFn(handler)
 	pub2str := hex.EncodeToString(pub2)
-	for j := 0; j < 10; j++ {
+	for j := 0; j < 100; j++ {
 		go func() {
-			for i := 0; i < 1000; i++ {
+			for i := 0; i < 100; i++ {
 				p1.SendMessageToPeer(pub2str, goldenMessage, true)
 			}
 		}()
@@ -243,9 +243,6 @@ func TestBigMessage(t *testing.T) {
 	}
 
 	handler := func(msg []byte) {
-		log.Infof("received message: %s", string(msg))
-		log.Infof("len, %v", len(goldenMessage))
-		log.Infof("len, %v", len(msg))
 		if !bytes.Equal(msg, goldenMessage) {
 			log.Errorf("bad response")
 		}
@@ -258,6 +255,85 @@ func TestBigMessage(t *testing.T) {
 
 	ticker := time.NewTicker(time.Minute)
 	select {
+	case <-done:
+		ticker.Stop()
+		log.Infof("Finished")
+	case <-ticker.C:
+		log.Errorf("Failed to receive message in time")
+		t.Error("Failed to receive message in time")
+	}
+}
+
+func TestConcurrentBootstraps(t *testing.T) {
+	loggo.ConfigureLoggers("<root>=TRACE")
+
+	repeatCount := 5
+
+	peers := make([]*peer.Peer, 0)
+	pub_keys := make([][]byte, 0)
+
+	inited := make(chan bool)
+	counter := make(chan bool)
+	done := make(chan bool)
+	fail := make(chan bool)
+
+	goldenMessage := []byte("ping")
+
+	handler := func(msg []byte) {
+		if !bytes.Equal(msg, goldenMessage) {
+			log.Errorf("bad response")
+			log.Infof("[%s], %x\n", msg, msg)
+			fail <- true
+		} else {
+			counter <- true
+		}
+	}
+
+	for i := 0; i < repeatCount; i++ {
+		go func(idx int) {
+			priv_key, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+			registerBootstrap(priv_key, fmt.Sprintf(":%d", 41011+idx))
+			p, k := makeServerPeer(priv_key)
+			p.SetStreamHandlerFn(handler)
+			peers = append(peers, p)
+			pub_keys = append(pub_keys, k)
+			inited <- true
+		}(i)
+	}
+
+	defer func() {
+		for i := 0; i < repeatCount; i++ {
+			peers[i].Stop()
+		}
+	}()
+
+	// wait for init completion
+	for i := 0; i < repeatCount; i++ {
+		<-inited
+	}
+
+	// send repeatCount - 1 messages
+	for i, p := range peers {
+		if i == 0 {
+			continue
+		}
+		p.SendMessageToPeer(hex.EncodeToString(pub_keys[i-1]), goldenMessage, true)
+	}
+
+	// wait for all messages during a minute
+	go func() {
+		for i := 0; i < repeatCount-1; i++ {
+			<-counter
+		}
+		done <- true
+	}()
+
+	ticker := time.NewTicker(time.Minute)
+	select {
+	case <-fail:
+		ticker.Stop()
+		log.Errorf("Incorrect message received")
+		t.Error("Incorrect message received")
 	case <-done:
 		ticker.Stop()
 		log.Infof("Finished")
