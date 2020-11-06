@@ -486,6 +486,12 @@ func (localPeer *Peer) IsMsgChannelExist(publicKey string) bool {
 	return exist
 }
 
+func (localPeer *Peer) SetMsgChannel(publicKey string, channel chan []byte) {
+	localPeer.lock()
+	defer localPeer.unlock()
+	localPeer.msgChannels[publicKey] = channel
+}
+
 func (localPeer *Peer) establishDirectConnection(targetPeer *types.PeerConnection) error {
 	targetPeerInfo := peer.AddrInfo{
 		ID:    targetPeer.Id,
@@ -656,8 +662,12 @@ func (localPeer *Peer) unlock() {
 
 func (localPeer *Peer) Stop() {
 	localPeer.lock()
-	close(localPeer.quit)
 	defer localPeer.unlock()
+	if localPeer.running == 0 {
+		return
+	}
+	close(localPeer.quit)
+	localPeer.running = 0
 	atomic.StoreInt32(&localPeer.running, 0)
 	streamsLen := len(localPeer.hubStreams)
 	i := 0
