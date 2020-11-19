@@ -104,18 +104,10 @@ func (localPeer *Peer) startOldMsgCleaner() {
 	}()
 }
 
-func (localPeer *Peer) Register(signature []byte) bool {
-	peerId, _ := localPeer.host.ID().Marshal()
-	localPublicKey, err := utils.EcRecover(peerId, signature)
-	if err != nil {
-		log.Errorf("%s", err)
-		return false
-	}
-	log.Debugf("localPubKey %s", utils.PublicKeyToHexString(localPublicKey))
-	localPeer.SetPublicKey(utils.PublicKeyToHexString(localPublicKey))
-	localPeer.SetSignature(signature)
+func (localPeer *Peer) RegisterOnBootstraps() {
 	bootstrapMAddrs := config.GetBootstrapMultiaddrs()
 	connected := 0
+	signature := localPeer.Signature
 	for i, bootstrapId := range config.GetBootstrapIDs() {
 		log.Debugf("Bootstrap %v/%v", i+1, len(bootstrapMAddrs))
 		bootstrap := &types.PeerConnection{
@@ -175,7 +167,25 @@ func (localPeer *Peer) Register(signature []byte) bool {
 		}
 	}
 	log.Debugf("Registered %v peers", connected)
+}
 
+func (localPeer *Peer) Register(signature []byte) bool {
+	peerId, _ := localPeer.host.ID().Marshal()
+	localPublicKey, err := utils.EcRecover(peerId, signature)
+	if err != nil {
+		log.Errorf("%s", err)
+		return false
+	}
+	log.Debugf("localPubKey %s", utils.PublicKeyToHexString(localPublicKey))
+	localPeer.SetPublicKey(utils.PublicKeyToHexString(localPublicKey))
+	localPeer.SetSignature(signature)
+	localPeer.RegisterOnBootstraps()
+	go func () {
+		for localPeer.running != 0 {
+			time.Sleep(5 * time.Second)
+			localPeer.RegisterOnBootstraps()
+		}
+	}()
 	return true
 }
 
