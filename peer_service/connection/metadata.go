@@ -1,4 +1,4 @@
-package types
+package connection
 
 import (
 	"bytes"
@@ -8,24 +8,23 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"lachain-communication-hub/communication"
 	"lachain-communication-hub/utils"
-	"log"
 )
 
-type PeerConnection struct {
+type Metadata struct {
 	PublicKey string
 	Id        peer.ID
 	LastSeen  uint32
 	Addr      ma.Multiaddr
 }
 
-type PeerConnectionSerializable struct {
+type MetadataSerializable struct {
 	PublicKey []byte
 	Id        string
 	LastSeen  uint32
 	Addr      []byte
 }
 
-func (pc *PeerConnection) toBytes() []byte {
+func (pc *Metadata) toBytes() []byte {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	var addr []byte
@@ -35,7 +34,7 @@ func (pc *PeerConnection) toBytes() []byte {
 		addr = pc.Addr.Bytes()
 	}
 
-	ser := PeerConnectionSerializable{
+	ser := MetadataSerializable{
 		PublicKey: utils.HexToBytes(pc.PublicKey),
 		Id:        pc.Id.Pretty(),
 		LastSeen:  pc.LastSeen,
@@ -44,44 +43,44 @@ func (pc *PeerConnection) toBytes() []byte {
 
 	err := enc.Encode(ser)
 	if err != nil {
-		log.Fatal("encode error:", err)
+		panic(err)
 	}
 	return buf.Bytes()
 }
 
-func (pc *PeerConnection) Encode() []byte {
+func (pc *Metadata) Encode() []byte {
 	var data = pc.toBytes()
 	length := make([]byte, 4)
 	binary.LittleEndian.PutUint32(length, uint32(len(data)))
 	return append(length, data...)
 }
 
-func PeerConnectionFromBytes(raw []byte) *PeerConnection {
+func PeerConnectionFromBytes(raw []byte) *Metadata {
 
 	buf := bytes.NewBuffer(raw)
-	var peerConn PeerConnectionSerializable
+	var peerConn MetadataSerializable
 	dec := gob.NewDecoder(buf)
 	err := dec.Decode(&peerConn)
 	if err != nil {
-		log.Fatal("decode error:", err)
+		panic(err)
 	}
 
 	pub := utils.BytesToHex(peerConn.PublicKey)
 
 	id, err := peer.Decode(peerConn.Id)
 	if err != nil {
-		log.Fatal("decompress id error:", err)
+		panic(err)
 	}
 
 	var addr ma.Multiaddr
 	if len(peerConn.Addr) > 0 {
 		addr, err = ma.NewMultiaddrBytes(peerConn.Addr)
 		if err != nil {
-			log.Fatal("decompress addr error:", err)
+			panic(err)
 		}
 	}
 
-	return &PeerConnection{
+	return &Metadata{
 		PublicKey: pub,
 		Id:        id,
 		LastSeen:  peerConn.LastSeen,
@@ -89,8 +88,16 @@ func PeerConnectionFromBytes(raw []byte) *PeerConnection {
 	}
 }
 
-func DecodeArray(raw []byte) []*PeerConnection {
-	var result []*PeerConnection
+func EncodeArray(connections []*Metadata) []byte {
+	var result []byte
+	for _, conn := range connections {
+		result = append(result, conn.Encode()...)
+	}
+	return result
+}
+
+func DecodeArray(raw []byte) []*Metadata {
+	var result []*Metadata
 	for cursor := 0; cursor < len(raw); {
 		length := communication.ExtractLength(raw[cursor:])
 		cursor += 4

@@ -11,12 +11,12 @@ import (
 	"github.com/juju/loggo"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
-	"lachain-communication-hub/peer"
+	"lachain-communication-hub/peer_service"
 	"sync"
 	"unsafe"
 )
 
-var localPeer *peer.Peer
+var localPeer *peer_service.PeerService
 
 var log = loggo.GetLogger("embedded_hub")
 var ZeroPub = make([]byte, 33)
@@ -34,8 +34,7 @@ func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int) {
 	defer mutex.Unlock()
 	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen))
 	priv_key := host.GetPrivateKeyForHost("_h1")
-	localPeer = peer.New(priv_key)
-	localPeer.SetStreamHandlerFn(ProcessMessage)
+	localPeer = peer_service.New(priv_key, ProcessMessage)
 }
 
 //export GetKey
@@ -100,7 +99,7 @@ func Init(signaturePtr unsafe.Pointer, signatureLength C.int) C.int {
 	defer mutex.Unlock()
 	log.Tracef("Received: Init Request")
 	signature := C.GoBytes(signaturePtr, signatureLength)
-	if localPeer.Register(signature) {
+	if localPeer.SetSignature(signature) {
 		return 1
 	}
 	return 0
@@ -118,7 +117,7 @@ func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Point
 		localPeer.BroadcastMessage(data)
 	} else {
 		pub := hex.EncodeToString(pubKey)
-		localPeer.SendMessageToPeer(pub, data, true)
+		localPeer.SendMessageToPeer(pub, data)
 	}
 }
 

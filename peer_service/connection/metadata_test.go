@@ -1,10 +1,12 @@
-package types
+package connection
 
 import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/magiconair/properties/assert"
+	ma "github.com/multiformats/go-multiaddr"
+	"lachain-communication-hub/utils"
 	"testing"
 )
 
@@ -19,8 +21,8 @@ func TestEncodeDecode(t *testing.T) {
 		fmt.Errorf("could not parsae id: %v", err)
 	}
 
-	pc := PeerConnection{
-		PublicKey: &prv.PublicKey,
+	pc := Metadata{
+		PublicKey: utils.PublicKeyToHexString(&prv.PublicKey),
 		Id:        peerId,
 		LastSeen:  uint32(23),
 		Addr:      nil,
@@ -44,8 +46,8 @@ func TestEncodeDecodeArray(t *testing.T) {
 		fmt.Errorf("could not parsae id: %v", err)
 	}
 
-	pc := PeerConnection{
-		PublicKey: &prv.PublicKey,
+	pc := Metadata{
+		PublicKey: utils.PublicKeyToHexString(&prv.PublicKey),
 		Id:        peerId,
 		LastSeen:  uint32(23),
 		Addr:      nil,
@@ -60,4 +62,17 @@ func TestEncodeDecodeArray(t *testing.T) {
 	assert.Equal(t, len(results), 2)
 	assert.Equal(t, results[0].toBytes(), pc.toBytes())
 	assert.Equal(t, results[1].toBytes(), pc.toBytes())
+}
+
+func TestMultiAddrRoundTrip(t *testing.T) {
+	address, err := ma.NewMultiaddr("/ip4/127.0.0.1/tcp/41010")
+	if err != nil {
+		panic(err)
+	}
+	addressBytes := address.Bytes()
+	recovered, err := ma.NewMultiaddrBytes(addressBytes)
+	if err != nil {
+		panic(err)
+	}
+	assert.Equal(t, recovered, address)
 }

@@ -9,9 +9,8 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-var RelayAddrs = []string{}
-var RelayIds = []string{}
-var GRPCPort = ":50001"
+var RelayAddrs []string
+var RelayIds []string
 
 var ipLookup = true
 

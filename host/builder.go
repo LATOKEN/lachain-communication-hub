@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	conf "lachain-communication-hub/config"
-	"lachain-communication-hub/types"
 	"os"
 	"strconv"
 
@@ -84,7 +83,7 @@ func GenerateKey(count int) {
 	}
 }
 
-func BuildNamedHost(typ int, priv_key crypto.PrivKey) core.Host {
+func BuildNamedHost(priv_key crypto.PrivKey) core.Host {
 
 	prvKeyOpt := func(c *config.Config) error {
 		c.PeerKey = priv_key
@@ -93,32 +92,27 @@ func BuildNamedHost(typ int, priv_key crypto.PrivKey) core.Host {
 
 	myId, _ := peer.IDFromPrivateKey(priv_key)
 
-	switch typ {
-	case types.Peer:
-		externalIP := conf.GetP2PExternalIP()
-		if externalIP == "" {
-			log.Warningf("External IP not defined, Peers might not be able to resolve this node if behind NAT")
-		}
-		var listenAddrs libp2p.Option
-
-		// set port if we are bootstrap
-		for _, addr := range conf.GetBootstrapIDAddresses(myId) {
-			listenAddrs = libp2p.ListenAddrs(addr)
-		}
-		if listenAddrs == nil {
-			listenAddrs = libp2p.ListenAddrs()
-		}
-		host, err := libp2p.New(
-			context.Background(),
-			listenAddrs,
-			libp2p.EnableRelay(circuit.OptHop),
-			prvKeyOpt,
-		)
-		if err != nil {
-			panic(err)
-		}
-		return host
-	default:
-		return nil
+	externalIP := conf.GetP2PExternalIP()
+	if externalIP == "" {
+		log.Warningf("External IP not defined, Peers might not be able to resolve this node if behind NAT")
 	}
+	var listenAddrs libp2p.Option
+
+	// set port if we are bootstrap
+	for _, addr := range conf.GetBootstrapIDAddresses(myId) {
+		listenAddrs = libp2p.ListenAddrs(addr)
+	}
+	if listenAddrs == nil {
+		listenAddrs = libp2p.ListenAddrs()
+	}
+	host, err := libp2p.New(
+		context.Background(),
+		listenAddrs,
+		libp2p.EnableRelay(circuit.OptHop),
+		prvKeyOpt,
+	)
+	if err != nil {
+		panic(err)
+	}
+	return host
 }

@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"lachain-communication-hub/config"
-	"lachain-communication-hub/peer"
+	"lachain-communication-hub/peer_service"
 	"lachain-communication-hub/utils"
 	"testing"
 	"time"
@@ -28,8 +28,8 @@ func registerBootstrap(prv p2p_crypto.PrivKey, port string) {
 	log.Debugf("Register Bootstrap address: %s", bootstrapAddress)
 }
 
-func makeServerPeer(priv_key p2p_crypto.PrivKey) (*peer.Peer, []byte) {
-	p := peer.New(priv_key)
+func makeServerPeer(priv_key p2p_crypto.PrivKey, handler func([]byte)) (*peer_service.PeerService, []byte) {
+	p := peer_service.New(priv_key, handler)
 
 	var id []byte
 	for {
@@ -52,7 +52,7 @@ func makeServerPeer(priv_key p2p_crypto.PrivKey) (*peer.Peer, []byte) {
 		panic(err)
 	}
 
-	if !p.Register(signature) {
+	if !p.SetSignature(signature) {
 		panic("Init failed")
 	}
 
@@ -67,12 +67,6 @@ func TestSingleSend(t *testing.T) {
 
 	registerBootstrap(priv_key1, ":41011")
 	registerBootstrap(priv_key2, ":41012")
-
-	p1, _ := makeServerPeer(priv_key1)
-	defer p1.Stop()
-
-	p2, pub2 := makeServerPeer(priv_key2)
-	defer p2.Stop()
 
 	done := make(chan bool)
 
@@ -89,8 +83,11 @@ func TestSingleSend(t *testing.T) {
 		done <- true
 	}
 
-	p2.SetStreamHandlerFn(handler)
-	p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage, true)
+	p1, _ := makeServerPeer(priv_key1, func([]byte) {})
+	defer p1.Stop()
+	p2, pub2 := makeServerPeer(priv_key2, handler)
+	defer p2.Stop()
+	p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage)
 
 	ticker := time.NewTicker(time.Minute)
 	select {
@@ -112,12 +109,6 @@ func TestMassSend2Nodes(t *testing.T) {
 	registerBootstrap(priv_key1, ":41011")
 	registerBootstrap(priv_key2, ":41012")
 
-	p1, _ := makeServerPeer(priv_key1)
-	defer p1.Stop()
-
-	p2, pub2 := makeServerPeer(priv_key2)
-	defer p2.Stop()
-
 	done := make(chan bool)
 	fail := make(chan bool)
 
@@ -135,12 +126,17 @@ func TestMassSend2Nodes(t *testing.T) {
 		}
 	}
 
-	p2.SetStreamHandlerFn(handler)
+	p1, _ := makeServerPeer(priv_key1, func([]byte) {})
+	defer p1.Stop()
+
+	p2, pub2 := makeServerPeer(priv_key2, handler)
+	defer p2.Stop()
+
 	pub2str := hex.EncodeToString(pub2)
 	for j := 0; j < 100; j++ {
 		go func() {
 			for i := 0; i < 100; i++ {
-				p1.SendMessageToPeer(pub2str, goldenMessage, true)
+				p1.SendMessageToPeer(pub2str, goldenMessage)
 			}
 		}()
 	}
@@ -168,12 +164,6 @@ func TestReconnect2Nodes(t *testing.T) {
 	registerBootstrap(priv_key1, ":41011")
 	registerBootstrap(priv_key2, ":41012")
 
-	p1, _ := makeServerPeer(priv_key1)
-	defer p1.Stop()
-
-	p2, pub2 := makeServerPeer(priv_key2)
-	defer p2.Stop()
-
 	done := make(chan bool)
 	fail := make(chan bool)
 
@@ -191,18 +181,22 @@ func TestReconnect2Nodes(t *testing.T) {
 		}
 	}
 
-	p2.SetStreamHandlerFn(handler)
+	p1, _ := makeServerPeer(priv_key1, func([]byte) {})
+	defer p1.Stop()
+
+	p2, pub2 := makeServerPeer(priv_key2, handler)
+	defer p2.Stop()
+
 	pub2str := hex.EncodeToString(pub2)
 	for i := 0; i < 10000; i++ {
-		p1.SendMessageToPeer(pub2str, goldenMessage, true)
+		p1.SendMessageToPeer(pub2str, goldenMessage)
 	}
 
 	go func() {
 		for {
 			time.Sleep(100 * time.Millisecond)
 			p2.Stop()
-			p2, _ = makeServerPeer(priv_key2)
-			p2.SetStreamHandlerFn(handler)
+			p2, _ = makeServerPeer(priv_key2, handler)
 		}
 	}()
 
@@ -213,7 +207,7 @@ func TestReconnect2Nodes(t *testing.T) {
 		log.Infof("Finished")
 	case <-fail:
 		ticker.Stop()
-		log.Errorf("Failed to process nessages")
+		log.Errorf("Failed to process messages")
 	case <-ticker.C:
 		log.Errorf("Failed to receive all messages in time")
 		t.Error("Failed to receive message in time")
@@ -228,12 +222,6 @@ func TestBigMessage(t *testing.T) {
 
 	registerBootstrap(priv_key1, ":41011")
 	registerBootstrap(priv_key2, ":41012")
-
-	p1, _ := makeServerPeer(priv_key1)
-	defer p1.Stop()
-
-	p2, pub2 := makeServerPeer(priv_key2)
-	defer p2.Stop()
 
 	done := make(chan bool)
 
@@ -250,8 +238,13 @@ func TestBigMessage(t *testing.T) {
 		done <- true
 	}
 
-	p2.SetStreamHandlerFn(handler)
-	p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage, true)
+	p1, _ := makeServerPeer(priv_key1, func([]byte) {})
+	defer p1.Stop()
+
+	p2, pub2 := makeServerPeer(priv_key2, handler)
+	defer p2.Stop()
+
+	p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage)
 
 	ticker := time.NewTicker(time.Minute)
 	select {
@@ -269,7 +262,7 @@ func TestConcurrentBootstraps(t *testing.T) {
 
 	repeatCount := 10
 
-	peers := make([]*peer.Peer, 0)
+	peers := make([]*peer_service.PeerService, 0)
 	pub_keys := make([][]byte, 0)
 
 	inited := make(chan bool)
@@ -293,8 +286,7 @@ func TestConcurrentBootstraps(t *testing.T) {
 		go func(idx int) {
 			priv_key, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
 			registerBootstrap(priv_key, fmt.Sprintf(":%d", 62000+idx))
-			p, k := makeServerPeer(priv_key)
-			p.SetStreamHandlerFn(handler)
+			p, k := makeServerPeer(priv_key, handler)
 			peers = append(peers, p)
 			pub_keys = append(pub_keys, k)
 			inited <- true
@@ -319,7 +311,7 @@ func TestConcurrentBootstraps(t *testing.T) {
 			continue
 		}
 		pkstr := hex.EncodeToString(pub_keys[i-1])
-		if p.SendMessageToPeer(pkstr, goldenMessage, true) {
+		if p.SendMessageToPeer(pkstr, goldenMessage) {
 			sent++
 		}
 	}

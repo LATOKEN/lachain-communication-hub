@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"hash/crc32"
+	"io"
 
 	"github.com/libp2p/go-libp2p-core/network"
 )
@@ -14,12 +15,41 @@ func (MsgIntegrityError) Error() string {
 	return "Message integrity check failed."
 }
 
-func EncodeDelimited(msg []byte) []byte {
-	buf := make([]byte, 8+len(msg))                            // to avoid reallocation
-	binary.LittleEndian.PutUint32(buf[:4], uint32(len(msg)+4)) // len of message + crc32
-	copy(buf[4:], msg)
-	binary.LittleEndian.PutUint32(buf[4+len(msg):], crc32.ChecksumIEEE(msg))
+type FrameKind byte
+
+const (
+	Message         = 0
+	Signature       = 1
+	GetPeersReply   = 2
+)
+
+type MessageFrame struct {
+	kind FrameKind
+	data []byte
+}
+
+func NewFrame(kind FrameKind, data []byte) MessageFrame {
+	return MessageFrame{
+		kind: kind,
+		data: data,
+	}
+}
+
+func (frame *MessageFrame) Encode() []byte {
+	buf := make([]byte, 9+len(frame.data))                            // to avoid reallocation
+	binary.LittleEndian.PutUint32(buf[:4], uint32(len(frame.data)+5)) // len of message + crc32
+	buf[4] = byte(frame.kind)
+	copy(buf[5:], frame.data)
+	binary.LittleEndian.PutUint32(buf[5+len(frame.data):], crc32.ChecksumIEEE(frame.data))
 	return buf
+}
+
+func (frame *MessageFrame) Data() []byte {
+	return frame.data
+}
+
+func (frame *MessageFrame) Kind() FrameKind {
+	return frame.kind
 }
 
 func ExtractLength(msg []byte) uint32 {
@@ -27,24 +57,24 @@ func ExtractLength(msg []byte) uint32 {
 	return length
 }
 
-func ReadOnce(stream network.Stream) ([]byte, error) {
+func ReadOnce(stream network.Stream) (MessageFrame, error) {
 	reader := bufio.NewReader(stream)
 	return ReadFromReader(reader)
 }
 
-func ReadFromReader(reader *bufio.Reader) ([]byte, error) {
+func ReadFromReader(reader *bufio.Reader) (MessageFrame, error) {
 	msg := make([]byte, 4)
 
 	_, err := reader.Read(msg)
 	if err != nil {
-		return nil, err
+		return MessageFrame{}, err
 	}
 
 	bytesLeft := int(ExtractLength(msg))
 
 	if bytesLeft < 4 { // message size is too small to contain checksum
 		err = MsgIntegrityError{}
-		return nil, err
+		return MessageFrame{}, err
 	}
 
 	// read the message itself and checksum
@@ -52,27 +82,34 @@ func ReadFromReader(reader *bufio.Reader) ([]byte, error) {
 
 	msg = make([]byte, 4096)
 	for bytesLeft > 0 {
-		n, err := reader.Read(msg)
+		if bytesLeft < 4096 {
+			msg = make([]byte, bytesLeft)
+		}
+		n, err := io.ReadFull(reader, msg)
 		if err != nil {
-			return nil, err
+			return MessageFrame{}, err
 		}
 
 		result = append(result, msg[:n]...)
 		bytesLeft -= n
 	}
+	if result == nil || len(result) == 0 {
+		return MessageFrame{}, MsgIntegrityError{}
+	}
 
 	// check the checksum
 	checkSum := binary.LittleEndian.Uint32(result[len(result)-4:])
-	if checkSum != crc32.ChecksumIEEE(result[:len(result)-4]) { // mismatched checksum
-		err = MsgIntegrityError{}
-		return nil, err
+	if checkSum != crc32.ChecksumIEEE(result[1:len(result)-4]) { // mismatched checksum
+		return MessageFrame{}, MsgIntegrityError{}
 	}
 
-	return result[:len(result)-4], nil
+	return MessageFrame{
+		kind: FrameKind(result[0]),
+		data: result[1:len(result)-4],
+	}, nil
 }
 
-func Write(s network.Stream, msg []byte) error {
-	encoded := EncodeDelimited(msg)
-	_, err := s.Write(encoded)
+func Write(s network.Stream, frame MessageFrame) error {
+	_, err := s.Write(frame.Encode())
 	return err
 }
