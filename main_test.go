@@ -258,7 +258,7 @@ func TestBigMessage(t *testing.T) {
 }
 
 func TestConcurrentBootstraps(t *testing.T) {
-	loggo.ConfigureLoggers("<root>=TRACE")
+	loggo.ConfigureLoggers("<root>=DEBUG")
 
 	repeatCount := 10
 

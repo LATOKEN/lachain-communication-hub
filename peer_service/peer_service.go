@@ -123,6 +123,7 @@ func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata) 
 			if newPeer.Addr != nil {
 				conn.SetPeerAddress(newPeer.Addr)
 			}
+			continue
 		}
 		peerService.connections[newPeer.Id.Pretty()] = connection.New(
 			&peerService.host, newPeer.Id, peerService.myExternalAddress, newPeer.Addr, peerService.Signature,
@@ -212,7 +213,7 @@ func (peerService *PeerService) BroadcastMessage(msg []byte) {
 		if !conn.IsActive() && len(conn.PeerPublicKey) > 0 {
 			continue
 		}
-		log.Tracef("Broadcasting to active peer %v", conn.PeerPublicKey)
+		log.Tracef("Broadcasting to active peer %v (%v)", conn.PeerPublicKey, conn.PeerId.Pretty())
 		conn.Send(msg)
 	}
 }
@@ -269,9 +270,9 @@ func (peerService *PeerService) Stop() {
 	}
 	close(peerService.quit)
 	peerService.running = 0
-	for i, conn := range peerService.connections {
+	for pubKey, conn := range peerService.connections {
 		conn.Terminate()
-		log.Debugf("Connection terminated %v/%v", i, len(peerService.connections))
+		log.Debugf("Connection terminated %v", pubKey)
 	}
 	peerService.connections = nil
 	if err := peerService.host.ConnManager().Close(); err != nil {

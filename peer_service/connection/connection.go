@@ -124,7 +124,7 @@ func (connection *Connection) connectionLifeCycle() {
 	connection.signatureSent.Store(0)
 	for connection.status.Load() != Terminated {
 		if err := connection.checkStream(); err != nil {
-			log.Infof("Can't connect to peer %v, will retry in %v", connection.PeerId, openStreamBackoff)
+			log.Tracef("Can't connect to peer %v, will retry in %v", connection.PeerId, openStreamBackoff)
 			time.Sleep(openStreamBackoff)
 			if openStreamBackoff < time.Minute {
 				openStreamBackoff *= 2
@@ -140,7 +140,7 @@ func (connection *Connection) connectionLifeCycle() {
 
 		frame, err := communication.ReadOnce(connection.stream)
 		if err != nil {
-			log.Errorf("Skipped message, resetting connection: %v", err)
+			log.Errorf("Skipped message from peer %v, resetting connection: %v", connection.PeerId.Pretty(), err)
 			connection.resetStream()
 			continue
 		}
@@ -156,7 +156,7 @@ func (connection *Connection) connectionLifeCycle() {
 			connection.handlePeers(frame.Data())
 			break
 		default:
-			log.Errorf("Unknown frame kind: %v", frame.Kind())
+			log.Errorf("Unknown frame kind received from peer %v: %v", connection.PeerId.Pretty(), frame.Kind())
 		}
 	}
 	close(connection.lifecycleFinished)
@@ -169,10 +169,10 @@ func (connection *Connection) sendMessageCycle() {
 		if msgToSend == nil {
 			value, err := connection.messageQueue.DequeueOrWaitForNextElement()
 			if err != nil {
-				log.Errorf("Failed to wait for element: %v", err)
+				log.Errorf("Failed to wait for message to send to peer %v: %v", connection.PeerId.Pretty(), err)
 			}
 			if value == nil {
-				log.Tracef("Got terminating message, finishing send cycle")
+				log.Tracef("Got terminating message, finishing send cycle for peer %v", connection.PeerId.Pretty())
 				break
 			}
 			msgToSend = value.([]byte)
@@ -187,7 +187,7 @@ func (connection *Connection) sendMessageCycle() {
 			}
 			log.Errorf("Error while sending message: %v", err)
 		}
-		log.Errorf("Resending message in: %v", backoff)
+		log.Tracef("Resending message to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), backoff, connection.stream == nil)
 		time.Sleep(backoff)
 		if backoff < time.Second {
 			backoff *= 2
@@ -211,12 +211,12 @@ func (connection *Connection) sendPeersCycle() {
 
 func (connection *Connection) Send(msg []byte) {
 	if msg == nil {
-		log.Errorf("Got empty message to send, ignoring")
+		log.Errorf("Got empty message to send to peer %v, ignoring", connection.PeerId.Pretty())
 		return
 	}
 
 	if err := connection.messageQueue.Enqueue(msg); err != nil {
-		log.Errorf("Failed to queue message (this might be critical): %v", err)
+		log.Errorf("Failed to queue message (this might be critical) to peer %v: %v", connection.PeerId.Pretty(), err)
 	}
 }
 
@@ -236,9 +236,9 @@ func (connection *Connection) sendSignature() {
 				backoff = time.Second
 				break
 			}
-			log.Errorf("Error while sending signature: %v", err)
+			log.Errorf("Error while sending signature to peer %v: %v", connection.PeerId.Pretty(), err)
 		}
-		log.Errorf("Resending signature in %v", backoff)
+		log.Tracef("Resending signature to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), backoff, connection.stream == nil)
 		time.Sleep(backoff)
 		if backoff < time.Minute {
 			backoff *= 2
@@ -260,18 +260,18 @@ func (connection *Connection) handleSignature(data []byte) {
 	signature, addressBytes := data[:65], data[65:]
 	peerIdBytes, err := connection.PeerId.Marshal()
 	if err != nil {
-		log.Errorf("Cannot create payload for signature check: %v", err)
+		log.Errorf("Cannot create payload for signature check from peer %v: %v", connection.PeerId.Pretty(), err)
 		return
 	}
 	publicKey, err := utils.EcRecover(peerIdBytes, signature)
 	if err != nil {
-		log.Errorf("Signature check failed, resetting connection: %v", err)
+		log.Errorf("Signature check failed for peer %v, resetting connection: %v", connection.PeerId.Pretty(), err)
 		connection.resetStream()
 		return
 	}
 	address, err := ma.NewMultiaddrBytes(addressBytes)
 	if err != nil {
-		log.Errorf("Peer sent incorrect address, resetting connection: %v", err)
+		log.Errorf("Peer %v sent incorrect address, resetting connection: %v", connection.PeerId.Pretty(), err)
 		connection.resetStream()
 		return
 	}
@@ -290,16 +290,16 @@ func (connection *Connection) sendPeers() {
 		}
 		err := communication.Write(connection.stream, communication.NewFrame(communication.GetPeersReply, EncodeArray(peerConnections)))
 		if err != nil {
-			log.Errorf("Cannot send peers: %v", err)
+			log.Errorf("Cannot send peer list to peer %v: %v", connection.PeerId.Pretty(), err)
 		}
 		return
 	}
-	log.Errorf("Cannot send peers: no connection yet")
+	log.Errorf("Cannot send peer list to peer %v: no connection yet", connection.PeerId.Pretty())
 }
 
 func (connection *Connection) handlePeers(data []byte) {
 	peerConnections := DecodeArray(data)
-	log.Debugf("Received %v peers", len(peerConnections))
+	log.Debugf("Received %v peers from peer %v", len(peerConnections), connection.PeerId.Pretty())
 	connection.onPeerListUpdate(peerConnections)
 }
 
@@ -325,7 +325,7 @@ func (connection *Connection) connect(peerId peer.ID, peerAddress ma.Multiaddr) 
 			log.Debugf("Can't connect to %v through %v: %v", peerAddress, connectedPeerId, err)
 			errCount++
 			if errCount == MaxTryToConnect {
-				return errors.New("can't connect")
+				return errors.New("cant_connect")
 			}
 			continue
 		}
@@ -354,6 +354,7 @@ func (connection *Connection) SetStream(stream network.Stream) {
 	if connection.status.Load() == Terminated {
 		return
 	}
+	log.Tracef("Updating stream for connection with peer %v", stream.Conn().RemotePeer().Pretty())
 	connection.streamLock.Lock()
 	defer connection.streamLock.Unlock()
 	if connection.stream != nil {
@@ -371,7 +372,7 @@ func (connection *Connection) checkStream() error {
 	connection.streamLock.Lock()
 	defer connection.streamLock.Unlock()
 	if (*connection.host).Network().Connectedness(connection.PeerId) != network.Connected {
-		log.Tracef("Peer %v lacks connectedness, calling connect", connection.PeerId.Pretty())
+		log.Debugf("Peer %v lacks connectedness, calling connect", connection.PeerId.Pretty())
 		err := connection.connect(connection.PeerId, connection.PeerAddress)
 		if err != nil {
 			return err
@@ -379,7 +380,7 @@ func (connection *Connection) checkStream() error {
 		connection.signatureSent.Store(0)
 	}
 	if connection.stream == nil {
-		log.Tracef("Peer %v has no stream, creating one", connection.PeerId.Pretty())
+		log.Debugf("Peer %v has no stream, creating one", connection.PeerId.Pretty())
 		stream, err := (*connection.host).NewStream(context.Background(), connection.PeerId, "/")
 		if err != nil {
 			return err
@@ -393,6 +394,7 @@ func (connection *Connection) checkStream() error {
 }
 
 func (connection *Connection) resetStream() {
+	log.Debugf("Resetting stream to peer %s", connection.stream.Conn().RemotePeer().Pretty())
 	if err := connection.stream.Reset(); err != nil {
 		log.Errorf("Failed to reset stream: %v", err)
 	}
@@ -412,9 +414,9 @@ func (connection *Connection) Terminate() {
 		}
 	}
 	<-connection.lifecycleFinished
-	log.Tracef("Lifecycle finished")
+	log.Debugf("Lifecycle finished")
 	<-connection.sendCycleFinished
-	log.Tracef("sendCycle finished")
+	log.Debugf("SendCycle finished")
 	close(connection.peerCycleFinished)
-	log.Tracef("peerCycle finished")
+	log.Debugf("PeerCycle finished")
 }
