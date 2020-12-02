@@ -134,7 +134,7 @@ func (connection *Connection) connectionLifeCycle() {
 			openStreamBackoff = time.Second
 		}
 
-		if !connection.signatureSent.CAS(0, 1) && len(connection.signature) > 0 {
+		if len(connection.signature) > 0 && connection.signatureSent.CAS(0, 1) {
 			go connection.sendSignature()
 		}
 
@@ -221,6 +221,7 @@ func (connection *Connection) Send(msg []byte) {
 }
 
 func (connection *Connection) sendSignature() {
+	log.Debugf("Sending signature to peer %v", connection.PeerId.Pretty())
 	backoff := time.Second
 	for connection.status.Load() != Terminated {
 		if connection.stream != nil {
