@@ -154,14 +154,14 @@ func StartProfiler() C.int {
 		}
 
 		p := listener.Addr().(*net.TCPAddr).Port
-		log.Debugf("Using pprof port:", p)
+		log.Debugf("Using pprof port: %v", p)
+		portChannel <- p
 
 		if err := http.Serve(listener, nil); err != nil {
 			log.Errorf("Failed to listen on pprof port %v: %v", p, err)
-			portChannel <- -1
+			profilerPort = -1
 			return
 		}
-		portChannel <- p
 	}()
 	return C.int(<-portChannel)
 }
