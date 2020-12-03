@@ -13,6 +13,7 @@ namespace Lachain.CommunicationHub.Net
         internal readonly Lazy<HubGetMessages> GetMessages;
         internal readonly Lazy<HubInit> HubInit;
         internal readonly Lazy<HubGetKey> HubGetKey;
+        internal readonly Lazy<StartProfiler> StartProfiler;
 
 
         const string Lib = "hub";
@@ -32,6 +33,7 @@ namespace Lachain.CommunicationHub.Net
             GetMessages = LazyDelegate<HubGetMessages>();
             HubInit = LazyDelegate<HubInit>();
             HubGetKey = LazyDelegate<HubGetKey>();
+            StartProfiler = LazyDelegate<StartProfiler>();
         }
 
         Lazy<TDelegate> LazyDelegate<TDelegate>()
@@ -145,6 +147,11 @@ namespace Lachain.CommunicationHub.Net
         public static void Stop()
         {
             Imports.StopHub.Value();
+        }
+
+        public static int GetProfilerPort()
+        {
+            return Imports.StartProfiler.Value();
         }
 
         public static void SetLogLevel(string s)

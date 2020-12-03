@@ -12,9 +12,13 @@ import (
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer_service"
+	"net"
+	"net/http"
 	"sync"
 	"unsafe"
 )
+
+import _ "net/http/pprof"
 
 var localPeer *peer_service.PeerService
 
@@ -23,6 +27,7 @@ var ZeroPub = make([]byte, 33)
 
 var messages = goconcurrentqueue.NewFIFO()
 var mutex = &sync.Mutex{}
+var profilerPort C.int = -1
 
 func ProcessMessage(msg []byte) {
 	messages.Enqueue(msg)
@@ -134,6 +139,31 @@ func StopHub() {
 	defer mutex.Unlock()
 	fmt.Println("Exit received")
 	localPeer.Stop()
+}
+
+//export StartProfiler
+func StartProfiler() C.int {
+	if profilerPort != -1 {
+		return profilerPort
+	}
+	portChannel := make(chan int)
+	go func() {
+		listener, err := net.Listen("tcp", ":0")
+		if err != nil {
+			panic(err)
+		}
+
+		p := listener.Addr().(*net.TCPAddr).Port
+		log.Debugf("Using pprof port:", p)
+
+		if err := http.Serve(listener, nil); err != nil {
+			log.Errorf("Failed to listen on pprof port %v: %v", p, err)
+			portChannel <- -1
+			return
+		}
+		portChannel <- p
+	}()
+	return C.int(<-portChannel)
 }
 
 func main() {}

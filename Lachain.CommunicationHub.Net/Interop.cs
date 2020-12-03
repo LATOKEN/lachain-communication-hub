@@ -24,4 +24,7 @@ namespace Lachain.CommunicationHub.Net
 
     [SymbolName("LogLevel")]
     public unsafe delegate bool HubLogLevel(byte* str, int len);
+    
+    [SymbolName("StartProfiler")]
+    public delegate int StartProfiler();
 }
