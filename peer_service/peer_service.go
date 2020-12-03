@@ -61,6 +61,9 @@ func New(priv_key crypto.PrivKey, handler func([]byte)) *PeerService {
 }
 
 func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
+	if id == peerService.host.ID() {
+		return
+	}
 	if _, ok := peerService.connections[id.Pretty()]; id == peerService.host.ID() || ok {
 		return
 	}
@@ -118,6 +121,9 @@ func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata) 
 	defer peerService.unlock()
 	log.Tracef("Got list of %v potential peers", len(newPeers))
 	for _, newPeer := range newPeers {
+		if newPeer.Id == peerService.host.ID() {
+			continue
+		}
 		if conn, ok := peerService.connections[newPeer.Id.Pretty()]; ok {
 			log.Tracef("Peer %v already has connection", newPeer.Id.Pretty())
 			if newPeer.Addr != nil {
@@ -195,9 +201,9 @@ func (peerService *PeerService) connectionByPublicKey(publicKey string) *connect
 func (peerService *PeerService) SendMessageToPeer(publicKey string, msg []byte) bool {
 	peerService.lock()
 	defer peerService.unlock()
-	log.Tracef("Sending message to peer %v message length %d", publicKey, len(msg))
 
 	if conn := peerService.connectionByPublicKey(publicKey); conn != nil {
+		log.Tracef("Sending message to peer %v message length %d", conn.PeerId.Pretty(), len(msg))
 		conn.Send(msg)
 		return true
 	}
