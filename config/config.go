@@ -20,6 +20,9 @@ func SetBootstrapAddress(addressesString string) {
 	lock.Lock()
 	defer lock.Unlock()
 
+	if len(addressesString) == 0 {
+		return
+	}
 	var addresses = strings.Split(addressesString, ",")
 	for _, address := range addresses {
 		var parts = strings.Split(address, "@")
