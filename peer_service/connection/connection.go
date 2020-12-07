@@ -208,6 +208,7 @@ func (connection *Connection) sendMessageCycle() {
 					log.Warningf("Error while cleaning the queue for peer %v: %v", connection.PeerId.Pretty(), err)
 				}
 			}
+			msgToSend = nil
 		}
 	}
 	close(connection.sendCycleFinished)
