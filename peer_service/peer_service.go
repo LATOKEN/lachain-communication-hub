@@ -107,6 +107,7 @@ func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection
 	}
 	peerService.lock()
 	defer peerService.unlock()
+	log.Debugf("Sending %v postponed messages to peer %v with freshly recovered key %v", len(peerService.messages[publicKey]), conn.PeerId.Pretty(), publicKey)
 	for _, msg := range peerService.messages[publicKey] {
 		conn.Send(msg)
 	}
@@ -302,5 +303,9 @@ func (peerService *PeerService) Stop() {
 }
 
 func (peerService *PeerService) storeMessage(key string, msg []byte) {
-	peerService.messages[key] = append(peerService.messages[key], msg)
+	if conn := peerService.connectionByPublicKey(key); conn != nil {
+		conn.Send(msg)
+	} else {
+		peerService.messages[key] = append(peerService.messages[key], msg)
+	}
 }
