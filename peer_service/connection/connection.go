@@ -144,6 +144,7 @@ func (connection *Connection) connectionLifeCycle() {
 			connection.resetStream()
 			continue
 		}
+		log.Tracef("Read message from peer %v, length = %d", connection.PeerId.Pretty(), len(frame.Data()))
 
 		switch frame.Kind() {
 		case communication.Message:
@@ -164,6 +165,8 @@ func (connection *Connection) connectionLifeCycle() {
 
 func (connection *Connection) sendMessageCycle() {
 	backoff := time.Millisecond
+	lastSuccess := time.Now()
+	disconnectThreshold := time.Minute * 2
 	var msgToSend []byte = nil
 	for connection.status.Load() != Terminated {
 		if msgToSend == nil {
@@ -176,23 +179,36 @@ func (connection *Connection) sendMessageCycle() {
 				break
 			}
 			msgToSend = value.([]byte)
+			lastSuccess = time.Now() // reset last success since we got new message
 		}
 
 		if connection.stream != nil {
-			err := communication.Write(connection.stream, communication.NewFrame(communication.Message, msgToSend))
+			frame := communication.NewFrame(communication.Message, msgToSend)
+			err := communication.Write(connection.stream, frame)
 			if err == nil {
+				log.Tracef("Sent message (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
 				backoff = time.Millisecond
 				msgToSend = nil
+				lastSuccess = time.Now()
 				continue
 			}
-			log.Errorf("Error while sending message: %v", err)
+			log.Errorf("Error while sending message (len = %d bytes) to peer %v: %v", len(frame.Data()), connection.PeerId.Pretty(), err)
 		}
-		log.Tracef("Resending message to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), backoff, connection.stream == nil)
-		time.Sleep(backoff)
-		if backoff < time.Second {
-			backoff *= 2
+		if time.Now().Sub(lastSuccess) < disconnectThreshold {
+			log.Tracef("Resending message to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), backoff, connection.stream == nil)
+			time.Sleep(backoff)
+			if backoff < time.Second {
+				backoff *= 2
+			}
+		} else {
+			log.Warningf("Can't send message to peer %v for more than %v, cleaning messages", connection.PeerId.Pretty(), disconnectThreshold)
+			for connection.messageQueue.GetLen() > 0 {
+				_, err := connection.messageQueue.Dequeue()
+				if err != nil {
+					log.Warningf("Error while cleaning the queue for peer %v: %v", connection.PeerId.Pretty(), err)
+				}
+			}
 		}
-		continue
 	}
 	close(connection.sendCycleFinished)
 }
@@ -232,12 +248,14 @@ func (connection *Connection) sendSignature() {
 			payload = append(payload, connection.signature...)
 			payload = append(payload, connection.myAddress.Bytes()...)
 
-			err := communication.Write(connection.stream, communication.NewFrame(communication.Signature, payload))
+			frame := communication.NewFrame(communication.Signature, payload)
+			err := communication.Write(connection.stream, frame)
 			if err == nil {
+				log.Tracef("Sent signature (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
 				backoff = time.Second
 				break
 			}
-			log.Errorf("Error while sending signature to peer %v: %v", connection.PeerId.Pretty(), err)
+			log.Errorf("Error while sending signature (len = %d bytes) to peer %v: %v", len(frame.Data()), connection.PeerId.Pretty(), err)
 		}
 		log.Tracef("Resending signature to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), backoff, connection.stream == nil)
 		time.Sleep(backoff)
@@ -289,9 +307,12 @@ func (connection *Connection) sendPeers() {
 		if len(peerConnections) == 0 {
 			return
 		}
-		err := communication.Write(connection.stream, communication.NewFrame(communication.GetPeersReply, EncodeArray(peerConnections)))
+		msg := EncodeArray(peerConnections)
+		err := communication.Write(connection.stream, communication.NewFrame(communication.GetPeersReply, msg))
 		if err != nil {
-			log.Errorf("Cannot send peer list to peer %v: %v", connection.PeerId.Pretty(), err)
+			log.Errorf("Cannot send peer list (len = %d bytes) to peer %v: %v", len(msg), connection.PeerId.Pretty(), err)
+		} else {
+			log.Tracef("Sent peer list (len = %d bytes) to peer %v", len(msg), connection.PeerId.Pretty())
 		}
 		return
 	}

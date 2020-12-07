@@ -3,11 +3,14 @@ package communication
 import (
 	"bufio"
 	"encoding/binary"
+	"github.com/juju/loggo"
 	"hash/crc32"
 	"io"
 
 	"github.com/libp2p/go-libp2p-core/network"
 )
+
+var log = loggo.GetLogger("communication")
 
 type MsgIntegrityError struct{}
 
@@ -65,7 +68,7 @@ func ReadOnce(stream network.Stream) (MessageFrame, error) {
 func ReadFromReader(reader *bufio.Reader) (MessageFrame, error) {
 	msg := make([]byte, 4)
 
-	_, err := reader.Read(msg)
+	_, err := io.ReadFull(reader, msg)
 	if err != nil {
 		return MessageFrame{}, err
 	}
@@ -76,25 +79,12 @@ func ReadFromReader(reader *bufio.Reader) (MessageFrame, error) {
 		err = MsgIntegrityError{}
 		return MessageFrame{}, err
 	}
-
-	// read the message itself and checksum
-	var result []byte
-
-	msg = make([]byte, 4096)
-	for bytesLeft > 0 {
-		if bytesLeft < 4096 {
-			msg = make([]byte, bytesLeft)
-		}
-		n, err := io.ReadFull(reader, msg)
-		if err != nil {
-			return MessageFrame{}, err
-		}
-
-		result = append(result, msg[:n]...)
-		bytesLeft -= n
-	}
-	if result == nil || len(result) == 0 {
-		return MessageFrame{}, MsgIntegrityError{}
+	//log.Tracef("Read header of message len = %d", bytesLeft)
+	result := make([]byte, bytesLeft)
+	_, err = io.ReadFull(reader, result)
+	//log.Tracef("Read body of message len = %d bytes", len(result))
+	if err != nil {
+		return MessageFrame{}, err
 	}
 
 	// check the checksum
