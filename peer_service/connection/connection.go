@@ -86,7 +86,7 @@ func New(
 }
 
 func FromStream(
-	host *core.Host, stream network.Stream, myAddress ma.Multiaddr,
+	host *core.Host, stream network.Stream, myAddress ma.Multiaddr, signature []byte,
 	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func() []peer.ID, getPeers func() []*Metadata,
 ) *Connection {
@@ -107,6 +107,9 @@ func FromStream(
 	connection.availableRelays = availableRelays
 	connection.getPeers = getPeers
 	connection.inboundStream = stream
+	if signature != nil {
+		connection.SetSignature(signature)
+	}
 	go connection.receiveMessageCycle()
 	go connection.sendMessageCycle()
 	go connection.sendPeersCycle()
@@ -123,7 +126,6 @@ func (connection *Connection) IsActive() bool {
 }
 
 func (connection *Connection) receiveMessageCycle() {
-	connection.signatureSent.Store(0)
 	for connection.status.Load() != Terminated {
 		if connection.inboundStream != nil {
 			frame, err := communication.ReadOnce(connection.inboundStream)
@@ -159,6 +161,7 @@ func (connection *Connection) sendMessageCycle() {
 	openStreamBackoff := time.Second
 	sendBackoff := time.Millisecond
 	var msgToSend []byte = nil
+	connection.signatureSent.Store(0)
 	for connection.status.Load() != Terminated {
 		if err := connection.checkOutboundStream(); err != nil {
 			log.Tracef("Can't connect to peer %v, will retry in %v", connection.PeerId, openStreamBackoff)
@@ -302,6 +305,7 @@ func (connection *Connection) handleSignature(data []byte) {
 		return
 	}
 	connection.PeerPublicKey = utils.PublicKeyToHexString(publicKey)
+	log.Tracef("Recovered public key %v for peer %v from signature", connection.PeerPublicKey, connection.PeerId.Pretty())
 	connection.PeerAddress = address
 	connection.status.CAS(NotConnected, HandshakeComplete)
 	connection.status.CAS(JustConnected, HandshakeComplete)
@@ -427,7 +431,6 @@ func (connection *Connection) resetInboundStream() {
 	if err := connection.inboundStream.Reset(); err != nil {
 		log.Errorf("Failed to reset stream: %v", err)
 	}
-	connection.signatureSent.Store(0)
 	connection.inboundStream = nil
 }
 

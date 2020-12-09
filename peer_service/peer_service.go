@@ -45,6 +45,7 @@ func New(priv_key crypto.PrivKey, handler func([]byte)) *PeerService {
 	peerService.running = 1
 	peerService.quit = make(chan struct{})
 	peerService.msgHandler = handler
+	peerService.Signature = nil
 	externalAddress, err := peerService.GetExternalMultiAddress()
 	if err != nil {
 		log.Errorf("Cannot determine my external address: %v", err)
@@ -89,7 +90,7 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 		return
 	}
 	newConnect := connection.FromStream(
-		&peerService.host, stream, peerService.myExternalAddress,
+		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
