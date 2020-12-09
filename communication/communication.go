@@ -79,10 +79,10 @@ func ReadFromReader(reader *bufio.Reader) (MessageFrame, error) {
 		err = MsgIntegrityError{}
 		return MessageFrame{}, err
 	}
-	//log.Tracef("Read header of message len = %d", bytesLeft)
+	log.Tracef("Read header of message len = %d", bytesLeft)
 	result := make([]byte, bytesLeft)
 	_, err = io.ReadFull(reader, result)
-	//log.Tracef("Read body of message len = %d bytes", len(result))
+	log.Tracef("Read body of message len = %d bytes", len(result))
 	if err != nil {
 		return MessageFrame{}, err
 	}

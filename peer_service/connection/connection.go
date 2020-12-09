@@ -40,7 +40,8 @@ type Connection struct {
 	signature            []byte
 	signatureSent        *atomic.Int32
 	messageQueue         *goconcurrentqueue.FIFO
-	stream               network.Stream
+	inboundStream        network.Stream
+	outboundStream       network.Stream
 	streamLock           sync.Mutex
 	status               *atomic.Int32
 	onPeerListUpdate     func([]*Metadata)
@@ -75,7 +76,7 @@ func New(
 	connection.onMessage = onMessage
 	connection.availableRelays = availableRelays
 	connection.getPeers = getPeers
-	go connection.connectionLifeCycle()
+	go connection.receiveMessageCycle()
 	go connection.sendMessageCycle()
 	go connection.sendPeersCycle()
 	if signature != nil {
@@ -85,14 +86,14 @@ func New(
 }
 
 func FromStream(
-	host *core.Host, stream *network.Stream, myAddress ma.Multiaddr,
+	host *core.Host, stream network.Stream, myAddress ma.Multiaddr,
 	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func() []peer.ID, getPeers func() []*Metadata,
 ) *Connection {
-	log.Debugf("Creating connection with peer %v from existing stream", (*stream).Conn().RemotePeer().Pretty())
+	log.Debugf("Creating connection with peer %v from inbound stream", stream.Conn().RemotePeer().Pretty())
 	connection := new(Connection)
 	connection.host = host
-	connection.PeerId = (*stream).Conn().RemotePeer()
+	connection.PeerId = stream.Conn().RemotePeer()
 	connection.myAddress = myAddress
 	connection.lifecycleFinished = make(chan struct{})
 	connection.sendCycleFinished = make(chan struct{})
@@ -105,7 +106,8 @@ func FromStream(
 	connection.onMessage = onMessage
 	connection.availableRelays = availableRelays
 	connection.getPeers = getPeers
-	go connection.connectionLifeCycle()
+	connection.inboundStream = stream
+	go connection.receiveMessageCycle()
 	go connection.sendMessageCycle()
 	go connection.sendPeersCycle()
 	return connection
@@ -116,14 +118,49 @@ func (connection *Connection) SetPeerAddress(address ma.Multiaddr) {
 }
 
 func (connection *Connection) IsActive() bool {
-	return connection.status.Load() != Terminated && connection.status.Load() != NotConnected && connection.stream != nil
+	return connection.status.Load() != Terminated && connection.status.Load() != NotConnected &&
+		(connection.inboundStream != nil || connection.outboundStream != nil)
 }
 
-func (connection *Connection) connectionLifeCycle() {
-	openStreamBackoff := time.Second
+func (connection *Connection) receiveMessageCycle() {
 	connection.signatureSent.Store(0)
 	for connection.status.Load() != Terminated {
-		if err := connection.checkStream(); err != nil {
+		if connection.inboundStream != nil {
+			frame, err := communication.ReadOnce(connection.inboundStream)
+			if err != nil {
+				log.Errorf("Skipped message from peer %v, resetting connection: %v", connection.PeerId.Pretty(), err)
+				connection.resetInboundStream()
+				continue
+			}
+			log.Tracef("Read message from peer %v, length = %d", connection.PeerId.Pretty(), len(frame.Data()))
+
+			switch frame.Kind() {
+			case communication.Message:
+				connection.onMessage(frame.Data())
+				break
+			case communication.Signature:
+				connection.handleSignature(frame.Data())
+				break
+			case communication.GetPeersReply:
+				connection.handlePeers(frame.Data())
+				break
+			default:
+				log.Errorf("Unknown frame kind received from peer %v: %v", connection.PeerId.Pretty(), frame.Kind())
+			}
+		}
+		time.Sleep(time.Second)
+	}
+	close(connection.lifecycleFinished)
+}
+
+func (connection *Connection) sendMessageCycle() {
+	lastSuccess := time.Now()
+	disconnectThreshold := time.Minute * 2
+	openStreamBackoff := time.Second
+	sendBackoff := time.Millisecond
+	var msgToSend []byte = nil
+	for connection.status.Load() != Terminated {
+		if err := connection.checkOutboundStream(); err != nil {
 			log.Tracef("Can't connect to peer %v, will retry in %v", connection.PeerId, openStreamBackoff)
 			time.Sleep(openStreamBackoff)
 			if openStreamBackoff < time.Minute {
@@ -138,37 +175,6 @@ func (connection *Connection) connectionLifeCycle() {
 			go connection.sendSignature()
 		}
 
-		frame, err := communication.ReadOnce(connection.stream)
-		if err != nil {
-			log.Errorf("Skipped message from peer %v, resetting connection: %v", connection.PeerId.Pretty(), err)
-			connection.resetStream()
-			continue
-		}
-		log.Tracef("Read message from peer %v, length = %d", connection.PeerId.Pretty(), len(frame.Data()))
-
-		switch frame.Kind() {
-		case communication.Message:
-			connection.onMessage(frame.Data())
-			break
-		case communication.Signature:
-			connection.handleSignature(frame.Data())
-			break
-		case communication.GetPeersReply:
-			connection.handlePeers(frame.Data())
-			break
-		default:
-			log.Errorf("Unknown frame kind received from peer %v: %v", connection.PeerId.Pretty(), frame.Kind())
-		}
-	}
-	close(connection.lifecycleFinished)
-}
-
-func (connection *Connection) sendMessageCycle() {
-	backoff := time.Millisecond
-	lastSuccess := time.Now()
-	disconnectThreshold := time.Minute * 2
-	var msgToSend []byte = nil
-	for connection.status.Load() != Terminated {
 		if msgToSend == nil {
 			value, err := connection.messageQueue.DequeueOrWaitForNextElement()
 			if err != nil {
@@ -182,12 +188,12 @@ func (connection *Connection) sendMessageCycle() {
 			lastSuccess = time.Now() // reset last success since we got new message
 		}
 
-		if connection.stream != nil {
+		if connection.outboundStream != nil {
 			frame := communication.NewFrame(communication.Message, msgToSend)
-			err := communication.Write(connection.stream, frame)
+			err := communication.Write(connection.outboundStream, frame)
 			if err == nil {
 				log.Tracef("Sent message (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
-				backoff = time.Millisecond
+				sendBackoff = time.Millisecond
 				msgToSend = nil
 				lastSuccess = time.Now()
 				continue
@@ -195,10 +201,10 @@ func (connection *Connection) sendMessageCycle() {
 			log.Errorf("Error while sending message (len = %d bytes) to peer %v: %v", len(frame.Data()), connection.PeerId.Pretty(), err)
 		}
 		if time.Now().Sub(lastSuccess) < disconnectThreshold {
-			log.Tracef("Resending message to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), backoff, connection.stream == nil)
-			time.Sleep(backoff)
-			if backoff < time.Second {
-				backoff *= 2
+			log.Tracef("Resending message to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), sendBackoff, connection.outboundStream == nil)
+			time.Sleep(sendBackoff)
+			if sendBackoff < time.Second {
+				sendBackoff *= 2
 			}
 		} else {
 			log.Warningf("Can't send message to peer %v for more than %v, cleaning messages", connection.PeerId.Pretty(), disconnectThreshold)
@@ -241,7 +247,7 @@ func (connection *Connection) sendSignature() {
 	log.Debugf("Sending signature to peer %v", connection.PeerId.Pretty())
 	backoff := time.Second
 	for connection.status.Load() != Terminated {
-		if connection.stream != nil {
+		if connection.outboundStream != nil {
 			if len(connection.signature) != 65 {
 				panic("bad signature length!")
 			}
@@ -250,7 +256,7 @@ func (connection *Connection) sendSignature() {
 			payload = append(payload, connection.myAddress.Bytes()...)
 
 			frame := communication.NewFrame(communication.Signature, payload)
-			err := communication.Write(connection.stream, frame)
+			err := communication.Write(connection.outboundStream, frame)
 			if err == nil {
 				log.Tracef("Sent signature (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
 				backoff = time.Second
@@ -258,7 +264,7 @@ func (connection *Connection) sendSignature() {
 			}
 			log.Errorf("Error while sending signature (len = %d bytes) to peer %v: %v", len(frame.Data()), connection.PeerId.Pretty(), err)
 		}
-		log.Tracef("Resending signature to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), backoff, connection.stream == nil)
+		log.Tracef("Resending signature to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), backoff, connection.outboundStream == nil)
 		time.Sleep(backoff)
 		if backoff < time.Minute {
 			backoff *= 2
@@ -286,13 +292,13 @@ func (connection *Connection) handleSignature(data []byte) {
 	publicKey, err := utils.EcRecover(peerIdBytes, signature)
 	if err != nil {
 		log.Errorf("Signature check failed for peer %v, resetting connection: %v", connection.PeerId.Pretty(), err)
-		connection.resetStream()
+		connection.resetInboundStream()
 		return
 	}
 	address, err := ma.NewMultiaddrBytes(addressBytes)
 	if err != nil {
 		log.Errorf("Peer %v sent incorrect address, resetting connection: %v", connection.PeerId.Pretty(), err)
-		connection.resetStream()
+		connection.resetInboundStream()
 		return
 	}
 	connection.PeerPublicKey = utils.PublicKeyToHexString(publicKey)
@@ -303,13 +309,13 @@ func (connection *Connection) handleSignature(data []byte) {
 }
 
 func (connection *Connection) sendPeers() {
-	if connection.stream != nil {
+	if connection.outboundStream != nil {
 		peerConnections := connection.getPeers()
 		if len(peerConnections) == 0 {
 			return
 		}
 		msg := EncodeArray(peerConnections)
-		err := communication.Write(connection.stream, communication.NewFrame(communication.GetPeersReply, msg))
+		err := communication.Write(connection.outboundStream, communication.NewFrame(communication.GetPeersReply, msg))
 		if err != nil {
 			log.Errorf("Cannot send peer list (len = %d bytes) to peer %v: %v", len(msg), connection.PeerId.Pretty(), err)
 		} else {
@@ -373,25 +379,25 @@ func (connection *Connection) connectToPeerUsingRelay(relayId peer.ID, targetPee
 	return nil
 }
 
-func (connection *Connection) SetStream(stream network.Stream) {
+func (connection *Connection) SetInboundStream(stream network.Stream) {
 	if connection.status.Load() == Terminated {
 		return
 	}
 	log.Tracef("Updating stream for connection with peer %v", stream.Conn().RemotePeer().Pretty())
 	connection.streamLock.Lock()
 	defer connection.streamLock.Unlock()
-	if connection.stream != nil {
-		if err := connection.stream.Reset(); err != nil {
+	if connection.inboundStream != nil {
+		if err := connection.inboundStream.Reset(); err != nil {
 			log.Errorf("Failed to reset stream: %v", err)
 		}
 	}
-	connection.stream = stream
+	connection.inboundStream = stream
 	connection.signatureSent.Store(0)
 	connection.status.CAS(NotConnected, JustConnected)
 	connection.status.CAS(HandshakeComplete, JustConnected)
 }
 
-func (connection *Connection) checkStream() error {
+func (connection *Connection) checkOutboundStream() error {
 	connection.streamLock.Lock()
 	defer connection.streamLock.Unlock()
 	if (*connection.host).Network().Connectedness(connection.PeerId) != network.Connected {
@@ -402,13 +408,13 @@ func (connection *Connection) checkStream() error {
 		}
 		connection.signatureSent.Store(0)
 	}
-	if connection.stream == nil {
+	if connection.outboundStream == nil {
 		log.Debugf("Peer %v has no stream, creating one", connection.PeerId.Pretty())
 		stream, err := (*connection.host).NewStream(context.Background(), connection.PeerId, "/")
 		if err != nil {
 			return err
 		}
-		connection.stream = stream
+		connection.outboundStream = stream
 		connection.signatureSent.Store(0)
 		connection.status.CAS(NotConnected, JustConnected)
 		connection.status.CAS(HandshakeComplete, JustConnected)
@@ -416,13 +422,13 @@ func (connection *Connection) checkStream() error {
 	return nil
 }
 
-func (connection *Connection) resetStream() {
-	log.Debugf("Resetting stream to peer %s", connection.stream.Conn().RemotePeer().Pretty())
-	if err := connection.stream.Reset(); err != nil {
+func (connection *Connection) resetInboundStream() {
+	log.Debugf("Resetting inbound stream to peer %s", connection.inboundStream.Conn().RemotePeer().Pretty())
+	if err := connection.inboundStream.Reset(); err != nil {
 		log.Errorf("Failed to reset stream: %v", err)
 	}
 	connection.signatureSent.Store(0)
-	connection.stream = nil
+	connection.inboundStream = nil
 }
 
 func (connection *Connection) Terminate() {
@@ -430,8 +436,14 @@ func (connection *Connection) Terminate() {
 	if err := connection.messageQueue.Enqueue(nil); err != nil {
 		log.Errorf("Can't enqueue terminal message in message queue: %v", err)
 	}
-	if connection.stream != nil {
-		err := connection.stream.Reset()
+	if connection.inboundStream != nil {
+		err := connection.inboundStream.Reset()
+		if err != nil {
+			log.Errorf("Can't reset stream while terminating connection: %v", err)
+		}
+	}
+	if connection.outboundStream != nil {
+		err := connection.outboundStream.Reset()
 		if err != nil {
 			log.Errorf("Can't reset stream while terminating connection: %v", err)
 		}

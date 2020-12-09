@@ -77,7 +77,6 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
 }
 
 func (peerService *PeerService) onConnect(stream network.Stream) {
-
 	peerService.lock()
 	defer peerService.unlock()
 	if peerService.running == 0 {
@@ -86,15 +85,11 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 	id := stream.Conn().RemotePeer().Pretty()
 	log.Tracef("Got incoming stream from %v", id)
 	if conn, ok := peerService.connections[id]; ok {
-		if conn.IsActive() {
-			log.Tracef("Got incoming stream from %v but we already have connection", id)
-			return
-		}
-		conn.SetStream(stream)
+		conn.SetInboundStream(stream)
 		return
 	}
 	newConnect := connection.FromStream(
-		&peerService.host, &stream, peerService.myExternalAddress,
+		&peerService.host, stream, peerService.myExternalAddress,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
