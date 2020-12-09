@@ -11,6 +11,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"go.uber.org/atomic"
 	"lachain-communication-hub/communication"
+	"lachain-communication-hub/throughput"
 	"lachain-communication-hub/utils"
 	"math/rand"
 	"sync"
@@ -52,6 +53,35 @@ type Connection struct {
 	lifecycleFinished    chan struct{}
 	sendCycleFinished    chan struct{}
 	peerCycleFinished    chan struct{}
+	inboundTPS           *throughput.Calculator
+	outboundTPS          *throughput.Calculator
+}
+
+func (connection *Connection) init(
+	host *core.Host, id peer.ID, myAddress ma.Multiaddr,
+	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
+	availableRelays func() []peer.ID, getPeers func() []*Metadata,
+) {
+	connection.host = host
+	connection.PeerId = id
+	connection.lifecycleFinished = make(chan struct{})
+	connection.sendCycleFinished = make(chan struct{})
+	connection.peerCycleFinished = make(chan struct{})
+	connection.myAddress = myAddress
+	connection.signatureSent = atomic.NewInt32(0)
+	connection.status = atomic.NewInt32(NotConnected)
+	connection.messageQueue = goconcurrentqueue.NewFIFO()
+	connection.onPeerListUpdate = onPeerListUpdate
+	connection.onPublicKeyRecovered = onPublicKeyRecovered
+	connection.onMessage = onMessage
+	connection.availableRelays = availableRelays
+	connection.getPeers = getPeers
+	connection.inboundTPS = throughput.New(time.Second, func(sum float64, n int32, duration time.Duration) {
+		log.Debugf("Inbound traffic from peer %v: %.1f bytes/s, %v messages, avg message = %1.f", id.Pretty(), sum/duration.Seconds(), n, sum/float64(n))
+	})
+	connection.outboundTPS = throughput.New(time.Second, func(sum float64, n int32, duration time.Duration) {
+		log.Debugf("Inbound traffic from peer %v: %.1f bytes/s, %v messages, avg message = %.1f", id.Pretty(), sum/duration.Seconds(), n, sum/float64(n))
+	})
 }
 
 func New(
@@ -61,21 +91,8 @@ func New(
 ) *Connection {
 	log.Debugf("Creating connection with peer %v (address %v)", id.Pretty(), peerAddress.String())
 	connection := new(Connection)
-	connection.host = host
-	connection.PeerId = id
-	connection.myAddress = myAddress
-	connection.lifecycleFinished = make(chan struct{})
-	connection.sendCycleFinished = make(chan struct{})
-	connection.peerCycleFinished = make(chan struct{})
+	connection.init(host, id, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
 	connection.PeerAddress = peerAddress
-	connection.signatureSent = atomic.NewInt32(0)
-	connection.status = atomic.NewInt32(NotConnected)
-	connection.messageQueue = goconcurrentqueue.NewFIFO()
-	connection.onPeerListUpdate = onPeerListUpdate
-	connection.onPublicKeyRecovered = onPublicKeyRecovered
-	connection.onMessage = onMessage
-	connection.availableRelays = availableRelays
-	connection.getPeers = getPeers
 	go connection.receiveMessageCycle()
 	go connection.sendMessageCycle()
 	go connection.sendPeersCycle()
@@ -92,20 +109,7 @@ func FromStream(
 ) *Connection {
 	log.Debugf("Creating connection with peer %v from inbound stream", stream.Conn().RemotePeer().Pretty())
 	connection := new(Connection)
-	connection.host = host
-	connection.PeerId = stream.Conn().RemotePeer()
-	connection.myAddress = myAddress
-	connection.lifecycleFinished = make(chan struct{})
-	connection.sendCycleFinished = make(chan struct{})
-	connection.peerCycleFinished = make(chan struct{})
-	connection.signatureSent = atomic.NewInt32(0)
-	connection.status = atomic.NewInt32(NotConnected)
-	connection.messageQueue = goconcurrentqueue.NewFIFO()
-	connection.onPeerListUpdate = onPeerListUpdate
-	connection.onPublicKeyRecovered = onPublicKeyRecovered
-	connection.onMessage = onMessage
-	connection.availableRelays = availableRelays
-	connection.getPeers = getPeers
+	connection.init(host, stream.Conn().RemotePeer(), myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
 	connection.inboundStream = stream
 	if signature != nil {
 		connection.SetSignature(signature)
@@ -135,6 +139,7 @@ func (connection *Connection) receiveMessageCycle() {
 				continue
 			}
 			log.Tracef("Read message from peer %v, length = %d", connection.PeerId.Pretty(), len(frame.Data()))
+			connection.inboundTPS.AddMeasurement(float64(len(frame.Data())))
 
 			switch frame.Kind() {
 			case communication.Message:
@@ -149,8 +154,9 @@ func (connection *Connection) receiveMessageCycle() {
 			default:
 				log.Errorf("Unknown frame kind received from peer %v: %v", connection.PeerId.Pretty(), frame.Kind())
 			}
+		} else {
+			time.Sleep(time.Second)
 		}
-		time.Sleep(time.Second)
 	}
 	close(connection.lifecycleFinished)
 }
@@ -196,6 +202,7 @@ func (connection *Connection) sendMessageCycle() {
 			err := communication.Write(connection.outboundStream, frame)
 			if err == nil {
 				log.Tracef("Sent message (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
+				connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
 				sendBackoff = time.Millisecond
 				msgToSend = nil
 				lastSuccess = time.Now()
@@ -229,7 +236,7 @@ func (connection *Connection) sendPeersCycle() {
 		select {
 		case <-connection.peerCycleFinished:
 			return
-		case <-time.After(time.Second * 10):
+		case <-time.After(time.Minute):
 			continue
 		}
 	}
@@ -262,6 +269,7 @@ func (connection *Connection) sendSignature() {
 			err := communication.Write(connection.outboundStream, frame)
 			if err == nil {
 				log.Tracef("Sent signature (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
+				connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
 				backoff = time.Second
 				break
 			}
@@ -319,11 +327,13 @@ func (connection *Connection) sendPeers() {
 			return
 		}
 		msg := EncodeArray(peerConnections)
-		err := communication.Write(connection.outboundStream, communication.NewFrame(communication.GetPeersReply, msg))
+		frame := communication.NewFrame(communication.GetPeersReply, msg)
+		err := communication.Write(connection.outboundStream, frame)
 		if err != nil {
 			log.Errorf("Cannot send peer list (len = %d bytes) to peer %v: %v", len(msg), connection.PeerId.Pretty(), err)
 		} else {
 			log.Tracef("Sent peer list (len = %d bytes) to peer %v", len(msg), connection.PeerId.Pretty())
+			connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
 		}
 		return
 	}

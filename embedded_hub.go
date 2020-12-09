@@ -14,7 +14,10 @@ import (
 	"lachain-communication-hub/peer_service"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -130,6 +133,13 @@ func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Point
 func LogLevel(s *C.char, len C.int) {
 	mutex.Lock()
 	defer mutex.Unlock()
+	loggo.ReplaceDefaultWriter(
+		loggo.NewSimpleWriter(os.Stderr,
+			func(entry loggo.Entry) string {
+				ts := entry.Timestamp.In(time.UTC).Format("2006/01/02 15:04:05.000")
+				filename := filepath.Base(entry.Filename)
+				return fmt.Sprintf("%s|%-5v|%-30v| %s", ts, entry.Level, fmt.Sprintf("%s %s:%d", entry.Module, filename, entry.Line), entry.Message)
+			}))
 	loggo.ConfigureLoggers(C.GoStringN(s, len))
 }
 
