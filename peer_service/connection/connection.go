@@ -8,6 +8,7 @@ import (
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
+	swarm "github.com/libp2p/go-libp2p-swarm"
 	ma "github.com/multiformats/go-multiaddr"
 	"go.uber.org/atomic"
 	"lachain-communication-hub/communication"
@@ -80,7 +81,7 @@ func (connection *Connection) init(
 		log.Debugf("Inbound traffic from peer %v: %.1f bytes/s, %v messages, avg message = %1.f", id.Pretty(), sum/duration.Seconds(), n, sum/float64(n))
 	})
 	connection.outboundTPS = throughput.New(time.Second, func(sum float64, n int32, duration time.Duration) {
-		log.Debugf("Inbound traffic from peer %v: %.1f bytes/s, %v messages, avg message = %.1f", id.Pretty(), sum/duration.Seconds(), n, sum/float64(n))
+		log.Debugf("Outbound traffic from peer %v: %.1f bytes/s, %v messages, avg message = %.1f", id.Pretty(), sum/duration.Seconds(), n, sum/float64(n))
 	})
 }
 
@@ -110,6 +111,7 @@ func FromStream(
 	log.Debugf("Creating connection with peer %v from inbound stream", stream.Conn().RemotePeer().Pretty())
 	connection := new(Connection)
 	connection.init(host, stream.Conn().RemotePeer(), myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
+	connection.PeerAddress = stream.Conn().RemoteMultiaddr()
 	connection.inboundStream = stream
 	if signature != nil {
 		connection.SetSignature(signature)
@@ -209,6 +211,7 @@ func (connection *Connection) sendMessageCycle() {
 				continue
 			}
 			log.Errorf("Error while sending message (len = %d bytes) to peer %v: %v", len(frame.Data()), connection.PeerId.Pretty(), err)
+			connection.resetOutboundStream()
 		}
 		if time.Now().Sub(lastSuccess) < disconnectThreshold {
 			log.Tracef("Resending message to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), sendBackoff, connection.outboundStream == nil)
@@ -416,6 +419,13 @@ func (connection *Connection) checkOutboundStream() error {
 	defer connection.streamLock.Unlock()
 	if (*connection.host).Network().Connectedness(connection.PeerId) != network.Connected {
 		log.Debugf("Peer %v lacks connectedness, calling connect", connection.PeerId.Pretty())
+		// Since we just tried and failed to dial, the dialer system will, by default
+		// prevent us from redialing again so quickly. Since we know what we're doing, we
+		// can use this ugly hack (it's on our TODO list to make it a little cleaner)
+		// to tell the dialer "no, its okay, let's try this again"
+		connection.resetInboundStream()
+		connection.resetOutboundStream()
+		(*connection.host).Network().(*swarm.Swarm).Backoff().Clear(connection.PeerId)
 		err := connection.connect(connection.PeerId, connection.PeerAddress)
 		if err != nil {
 			return err
@@ -437,6 +447,9 @@ func (connection *Connection) checkOutboundStream() error {
 }
 
 func (connection *Connection) resetInboundStream() {
+	if connection.inboundStream == nil {
+		return
+	}
 	log.Debugf("Resetting inbound stream to peer %s", connection.inboundStream.Conn().RemotePeer().Pretty())
 	if err := connection.inboundStream.Reset(); err != nil {
 		log.Errorf("Failed to reset stream: %v", err)
@@ -444,23 +457,24 @@ func (connection *Connection) resetInboundStream() {
 	connection.inboundStream = nil
 }
 
+func (connection *Connection) resetOutboundStream() {
+	if connection.outboundStream == nil {
+		return
+	}
+	log.Debugf("Resetting outbound stream to peer %s", connection.outboundStream.Conn().RemotePeer().Pretty())
+	if err := connection.outboundStream.Reset(); err != nil {
+		log.Errorf("Failed to reset stream: %v", err)
+	}
+	connection.outboundStream = nil
+}
+
 func (connection *Connection) Terminate() {
 	connection.status.Store(Terminated)
 	if err := connection.messageQueue.Enqueue(nil); err != nil {
 		log.Errorf("Can't enqueue terminal message in message queue: %v", err)
 	}
-	if connection.inboundStream != nil {
-		err := connection.inboundStream.Reset()
-		if err != nil {
-			log.Errorf("Can't reset stream while terminating connection: %v", err)
-		}
-	}
-	if connection.outboundStream != nil {
-		err := connection.outboundStream.Reset()
-		if err != nil {
-			log.Errorf("Can't reset stream while terminating connection: %v", err)
-		}
-	}
+	connection.resetInboundStream()
+	connection.resetOutboundStream()
 	<-connection.lifecycleFinished
 	log.Debugf("Lifecycle finished")
 	<-connection.sendCycleFinished

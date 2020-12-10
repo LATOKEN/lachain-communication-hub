@@ -84,11 +84,12 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 		return
 	}
 	id := stream.Conn().RemotePeer().Pretty()
-	log.Tracef("Got incoming stream from %v", id)
+	log.Tracef("Got incoming stream from %v (%v)", id, stream.Conn().RemoteMultiaddr().String())
 	if conn, ok := peerService.connections[id]; ok {
 		conn.SetInboundStream(stream)
 		return
 	}
+	// TODO: manage peers to preserve important ones & exclude extra
 	newConnect := connection.FromStream(
 		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
@@ -174,11 +175,11 @@ func (peerService *PeerService) GetPeers() []*connection.Metadata {
 	defer peerService.unlock()
 	var result []*connection.Metadata
 	for _, conn := range peerService.connections {
-		if conn.IsActive() && len(conn.PeerPublicKey) > 0 {
+		if conn.IsActive() {
 			result = append(result, &connection.Metadata{
 				PublicKey: conn.PeerPublicKey,
 				Id:        conn.PeerId,
-				LastSeen:  0,
+				LastSeen:  0, // TODO: restore last seen mechanism
 				Addr:      conn.PeerAddress,
 			})
 		}

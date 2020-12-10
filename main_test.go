@@ -193,14 +193,14 @@ func TestReconnect2Nodes(t *testing.T) {
 	}
 
 	go func() {
-		for {
-			time.Sleep(100 * time.Millisecond)
+		//for {
+			time.Sleep(1000 * time.Millisecond)
 			p2.Stop()
 			p2, _ = makeServerPeer(priv_key2, handler)
-		}
+		//}
 	}()
 
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(10 * time.Minute)
 	select {
 	case <-done:
 		ticker.Stop()
