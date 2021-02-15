@@ -3,7 +3,6 @@ package connection
 import (
 	"context"
 	"errors"
-	"github.com/enriquebris/goconcurrentqueue"
 	"github.com/juju/loggo"
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -41,7 +40,8 @@ type Connection struct {
 	myAddress            ma.Multiaddr
 	signature            []byte
 	signatureSent        *atomic.Int32
-	messageQueue         *goconcurrentqueue.FIFO
+	messageQueue		 *utils.MessageQueue
+	messageLock			 sync.Mutex
 	inboundStream        network.Stream
 	outboundStream       network.Stream
 	streamLock           sync.Mutex
@@ -71,7 +71,7 @@ func (connection *Connection) init(
 	connection.myAddress = myAddress
 	connection.signatureSent = atomic.NewInt32(0)
 	connection.status = atomic.NewInt32(NotConnected)
-	connection.messageQueue = goconcurrentqueue.NewFIFO()
+	connection.messageQueue = utils.NewMessageQueue()
 	connection.onPeerListUpdate = onPeerListUpdate
 	connection.onPublicKeyRecovered = onPublicKeyRecovered
 	connection.onMessage = onMessage
@@ -169,6 +169,7 @@ func (connection *Connection) sendMessageCycle() {
 	openStreamBackoff := time.Second
 	sendBackoff := time.Millisecond
 	var msgToSend []byte = nil
+
 	connection.signatureSent.Store(0)
 	for connection.status.Load() != Terminated {
 		if err := connection.checkOutboundStream(); err != nil {
@@ -187,7 +188,7 @@ func (connection *Connection) sendMessageCycle() {
 		}
 
 		if msgToSend == nil {
-			value, err := connection.messageQueue.DequeueOrWaitForNextElement()
+			value, err := connection.DequeueOrWait()
 			if err != nil {
 				log.Errorf("Failed to wait for message to send to peer %v: %v", connection.PeerId.Pretty(), err)
 			}
@@ -195,7 +196,7 @@ func (connection *Connection) sendMessageCycle() {
 				log.Tracef("Got terminating message, finishing send cycle for peer %v", connection.PeerId.Pretty())
 				break
 			}
-			msgToSend = value.([]byte)
+			msgToSend = value
 			lastSuccess = time.Now() // reset last success since we got new message
 		}
 
@@ -213,6 +214,7 @@ func (connection *Connection) sendMessageCycle() {
 			log.Errorf("Error while sending message (len = %d bytes) to peer %v: %v", len(frame.Data()), connection.PeerId.Pretty(), err)
 			connection.resetOutboundStream()
 		}
+		log.Tracef("Outbound stream for peer %v is not ready", connection.PeerId.Pretty())
 		if time.Now().Sub(lastSuccess) < disconnectThreshold {
 			log.Tracef("Resending message to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), sendBackoff, connection.outboundStream == nil)
 			time.Sleep(sendBackoff)
@@ -221,12 +223,9 @@ func (connection *Connection) sendMessageCycle() {
 			}
 		} else {
 			log.Warningf("Can't send message to peer %v for more than %v, cleaning messages", connection.PeerId.Pretty(), disconnectThreshold)
-			for connection.messageQueue.GetLen() > 0 {
-				_, err := connection.messageQueue.Dequeue()
-				if err != nil {
-					log.Warningf("Error while cleaning the queue for peer %v: %v", connection.PeerId.Pretty(), err)
-				}
-			}
+			connection.messageLock.Lock()
+			connection.messageQueue.Clear()
+			connection.messageLock.Unlock()
 			msgToSend = nil
 		}
 	}
@@ -251,8 +250,23 @@ func (connection *Connection) Send(msg []byte) {
 		return
 	}
 
-	if err := connection.messageQueue.Enqueue(msg); err != nil {
-		log.Errorf("Failed to queue message (this might be critical) to peer %v: %v", connection.PeerId.Pretty(), err)
+	connection.messageLock.Lock()
+	defer connection.messageLock.Unlock()
+	connection.messageQueue.Enqueue(msg)
+	log.Tracef("%v messages in queue for peer %v", connection.messageQueue.GetLen(), connection.PeerId.Pretty())
+}
+
+func (connection *Connection) DequeueOrWait() ([]byte, error) {
+	for {
+		connection.messageLock.Lock()
+		if connection.messageQueue.GetLen() > 0 {
+			val, err := connection.messageQueue.Front()
+			connection.messageQueue.Dequeue()
+			connection.messageLock.Unlock()
+			return val, err
+		}
+		connection.messageLock.Unlock()
+		time.Sleep(10*time.Millisecond)
 	}
 }
 
@@ -417,8 +431,9 @@ func (connection *Connection) SetInboundStream(stream network.Stream) {
 func (connection *Connection) checkOutboundStream() error {
 	connection.streamLock.Lock()
 	defer connection.streamLock.Unlock()
-	if (*connection.host).Network().Connectedness(connection.PeerId) != network.Connected {
-		log.Debugf("Peer %v lacks connectedness, calling connect", connection.PeerId.Pretty())
+	state := (*connection.host).Network().Connectedness(connection.PeerId)
+	if state != network.Connected {
+		log.Debugf("Peer %v lacks connectedness (%v), calling connect", connection.PeerId.Pretty(), state)
 		// Since we just tried and failed to dial, the dialer system will, by default
 		// prevent us from redialing again so quickly. Since we know what we're doing, we
 		// can use this ugly hack (it's on our TODO list to make it a little cleaner)
@@ -470,9 +485,9 @@ func (connection *Connection) resetOutboundStream() {
 
 func (connection *Connection) Terminate() {
 	connection.status.Store(Terminated)
-	if err := connection.messageQueue.Enqueue(nil); err != nil {
-		log.Errorf("Can't enqueue terminal message in message queue: %v", err)
-	}
+	connection.messageLock.Lock()
+	connection.messageQueue.Enqueue(nil)
+	connection.messageLock.Unlock()
 	connection.resetInboundStream()
 	connection.resetOutboundStream()
 	<-connection.lifecycleFinished
