@@ -40,8 +40,7 @@ type Connection struct {
 	myAddress            ma.Multiaddr
 	signature            []byte
 	signatureSent        *atomic.Int32
-	messageQueue		 *utils.MessageQueue
-	messageLock			 sync.Mutex
+	messageQueue         *utils.MessageQueue
 	inboundStream        network.Stream
 	outboundStream       network.Stream
 	streamLock           sync.Mutex
@@ -188,7 +187,7 @@ func (connection *Connection) sendMessageCycle() {
 		}
 
 		if msgToSend == nil {
-			value, err := connection.DequeueOrWait()
+			value, err := connection.messageQueue.DequeueOrWait()
 			if err != nil {
 				log.Errorf("Failed to wait for message to send to peer %v: %v", connection.PeerId.Pretty(), err)
 			}
@@ -223,9 +222,7 @@ func (connection *Connection) sendMessageCycle() {
 			}
 		} else {
 			log.Warningf("Can't send message to peer %v for more than %v, cleaning messages", connection.PeerId.Pretty(), disconnectThreshold)
-			connection.messageLock.Lock()
 			connection.messageQueue.Clear()
-			connection.messageLock.Unlock()
 			msgToSend = nil
 		}
 	}
@@ -250,24 +247,8 @@ func (connection *Connection) Send(msg []byte) {
 		return
 	}
 
-	connection.messageLock.Lock()
-	defer connection.messageLock.Unlock()
 	connection.messageQueue.Enqueue(msg)
 	log.Tracef("%v messages in queue for peer %v", connection.messageQueue.GetLen(), connection.PeerId.Pretty())
-}
-
-func (connection *Connection) DequeueOrWait() ([]byte, error) {
-	for {
-		connection.messageLock.Lock()
-		if connection.messageQueue.GetLen() > 0 {
-			val, err := connection.messageQueue.Front()
-			connection.messageQueue.Dequeue()
-			connection.messageLock.Unlock()
-			return val, err
-		}
-		connection.messageLock.Unlock()
-		time.Sleep(10*time.Millisecond)
-	}
 }
 
 func (connection *Connection) sendSignature() {
@@ -485,9 +466,7 @@ func (connection *Connection) resetOutboundStream() {
 
 func (connection *Connection) Terminate() {
 	connection.status.Store(Terminated)
-	connection.messageLock.Lock()
 	connection.messageQueue.Enqueue(nil)
-	connection.messageLock.Unlock()
 	connection.resetInboundStream()
 	connection.resetOutboundStream()
 	<-connection.lifecycleFinished
