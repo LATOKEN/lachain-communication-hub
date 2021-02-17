@@ -78,5 +78,11 @@ func (c *MessageQueue) DequeueOrWait() ([]byte, error) {
 	for c.queue.Len() == 0 {
 		c.cond.Wait()
 	}
-	return c.frontUnlocked()
+	val := c.queue.Front()
+	c.queue.Remove(val)
+	res := val.Value.([]byte)
+	if res == nil {
+		return nil,fmt.Errorf("Peek Error: Queue Datatype is incorrect")
+	}
+	return res,  nil
 }
