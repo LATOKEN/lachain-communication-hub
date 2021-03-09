@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/enriquebris/goconcurrentqueue"
 	"github.com/juju/loggo"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer_service"
@@ -106,6 +107,16 @@ func Init(signaturePtr unsafe.Pointer, signatureLength C.int) C.int {
 	mutex.Lock()
 	defer mutex.Unlock()
 	log.Tracef("Received: Init Request")
+	http.Handle("/metrics", promhttp.Handler())
+	go func() {
+		for {
+			err := http.ListenAndServe(":7072", nil)
+			if err != nil {
+				log.Errorf("Error while serving metrics: %v", err)
+			}
+		}
+	}()
+
 	signature := C.GoBytes(signaturePtr, signatureLength)
 	if localPeer.SetSignature(signature) {
 		return 1

@@ -9,6 +9,8 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	swarm "github.com/libp2p/go-libp2p-swarm"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 	"lachain-communication-hub/communication"
 	"lachain-communication-hub/throughput"
@@ -27,6 +29,38 @@ const (
 	JustConnected     = iota
 	HandshakeComplete = iota
 	Terminated        = iota
+)
+
+var (
+	sendErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "lachain_hub_send_errors",
+		Help: "The total number of errors during send",
+	}, []string{"error"})
+	receiveErrors = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "lachain_hub_receive_errors",
+		Help: "The total number of errors during receive",
+	}, []string{"error"})
+	droppedMessages = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "lachain_hub_dropped_messages",
+		Help: "The total number of messages dropped",
+	})
+	resendAttempts = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name: "lachain_hub_resend_attempts",
+		Help: "The total number of messages dropped",
+		Buckets: []float64{1, 2, 3, 4, 5},
+	})
+	inboundMessages = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "lachain_hub_inbound_messages",
+		Help: "The total number of inbound messages",
+	}, []string{"kind"})
+	outboundReset = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "lachain_hub_outbound_resets",
+		Help: "The total number of times when outbound stream was reset",
+	})
+	inboundReset = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "lachain_hub_inbound_reconnects",
+		Help: "The total number of times when inbound stream was reset",
+	})
 )
 
 const MaxTryToConnect = 3
@@ -135,6 +169,7 @@ func (connection *Connection) receiveMessageCycle() {
 		if connection.inboundStream != nil {
 			frame, err := communication.ReadOnce(connection.inboundStream)
 			if err != nil {
+				receiveErrors.WithLabelValues(err.Error()).Inc()
 				log.Errorf("Skipped message from peer %v, resetting connection: %v", connection.PeerId.Pretty(), err)
 				connection.resetInboundStream()
 				continue
@@ -144,12 +179,15 @@ func (connection *Connection) receiveMessageCycle() {
 
 			switch frame.Kind() {
 			case communication.Message:
+				inboundMessages.WithLabelValues("message").Inc()
 				connection.onMessage(frame.Data())
 				break
 			case communication.Signature:
+				inboundMessages.WithLabelValues("signature").Inc()
 				connection.handleSignature(frame.Data())
 				break
 			case communication.GetPeersReply:
+				inboundMessages.WithLabelValues("peers").Inc()
 				connection.handlePeers(frame.Data())
 				break
 			default:
@@ -168,6 +206,7 @@ func (connection *Connection) sendMessageCycle() {
 	openStreamBackoff := time.Second
 	sendBackoff := time.Millisecond
 	var msgToSend []byte = nil
+	attempts := 0
 
 	connection.signatureSent.Store(0)
 	for connection.status.Load() != Terminated {
@@ -199,10 +238,13 @@ func (connection *Connection) sendMessageCycle() {
 			lastSuccess = time.Now() // reset last success since we got new message
 		}
 
+		attempts += 1
 		if connection.outboundStream != nil {
 			frame := communication.NewFrame(communication.Message, msgToSend)
 			err := communication.Write(connection.outboundStream, frame)
 			if err == nil {
+				resendAttempts.Observe(float64(attempts))
+				attempts = 0
 				log.Tracef("Sent message (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
 				connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
 				sendBackoff = time.Millisecond
@@ -210,6 +252,7 @@ func (connection *Connection) sendMessageCycle() {
 				lastSuccess = time.Now()
 				continue
 			}
+			sendErrors.WithLabelValues(err.Error()).Inc()
 			log.Errorf("Error while sending message (len = %d bytes) to peer %v: %v", len(frame.Data()), connection.PeerId.Pretty(), err)
 			connection.resetOutboundStream()
 		}
@@ -221,6 +264,7 @@ func (connection *Connection) sendMessageCycle() {
 				sendBackoff *= 2
 			}
 		} else {
+			droppedMessages.Add(float64(connection.messageQueue.GetLen() + 1))
 			log.Warningf("Can't send message to peer %v for more than %v, cleaning messages", connection.PeerId.Pretty(), disconnectThreshold)
 			connection.messageQueue.Clear()
 			msgToSend = nil
@@ -399,6 +443,7 @@ func (connection *Connection) SetInboundStream(stream network.Stream) {
 	connection.streamLock.Lock()
 	defer connection.streamLock.Unlock()
 	if connection.inboundStream != nil {
+		inboundReset.Inc()
 		if err := connection.inboundStream.Reset(); err != nil {
 			log.Errorf("Failed to reset stream: %v", err)
 		}
@@ -446,6 +491,7 @@ func (connection *Connection) resetInboundStream() {
 	if connection.inboundStream == nil {
 		return
 	}
+	inboundReset.Inc()
 	log.Debugf("Resetting inbound stream to peer %s", connection.inboundStream.Conn().RemotePeer().Pretty())
 	if err := connection.inboundStream.Reset(); err != nil {
 		log.Errorf("Failed to reset stream: %v", err)
@@ -457,6 +503,7 @@ func (connection *Connection) resetOutboundStream() {
 	if connection.outboundStream == nil {
 		return
 	}
+	outboundReset.Inc()
 	log.Debugf("Resetting outbound stream to peer %s", connection.outboundStream.Conn().RemotePeer().Pretty())
 	if err := connection.outboundStream.Reset(); err != nil {
 		log.Errorf("Failed to reset stream: %v", err)
