@@ -241,7 +241,9 @@ func (connection *Connection) sendMessageCycle() {
 		attempts += 1
 		if connection.outboundStream != nil {
 			frame := communication.NewFrame(communication.Message, msgToSend)
+			connection.streamLock.Lock()
 			err := communication.Write(connection.outboundStream, frame)
+			connection.streamLock.Unlock()
 			if err == nil {
 				resendAttempts.Observe(float64(attempts))
 				attempts = 0
@@ -308,7 +310,9 @@ func (connection *Connection) sendSignature() {
 			payload = append(payload, connection.myAddress.Bytes()...)
 
 			frame := communication.NewFrame(communication.Signature, payload)
+			connection.streamLock.Lock()
 			err := communication.Write(connection.outboundStream, frame)
+			connection.streamLock.Unlock()
 			if err == nil {
 				log.Tracef("Sent signature (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
 				connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
@@ -370,7 +374,9 @@ func (connection *Connection) sendPeers() {
 		}
 		msg := EncodeArray(peerConnections)
 		frame := communication.NewFrame(communication.GetPeersReply, msg)
+		connection.streamLock.Lock()
 		err := communication.Write(connection.outboundStream, frame)
+		connection.streamLock.Unlock()
 		if err != nil {
 			log.Errorf("Cannot send peer list (len = %d bytes) to peer %v: %v", len(msg), connection.PeerId.Pretty(), err)
 		} else {
