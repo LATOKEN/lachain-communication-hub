@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/enriquebris/goconcurrentqueue"
 	"github.com/juju/loggo"
+	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
@@ -44,6 +45,22 @@ func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int) {
 	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen))
 	priv_key := host.GetPrivateKeyForHost("_h1")
 	localPeer = peer_service.New(priv_key, ProcessMessage)
+}
+
+//export TestStartHub
+func TestStartHub(bootstrapAddress string, privKeyHex string) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	config.SetBootstrapAddress(bootstrapAddress)
+	prvBytes, err := hex.DecodeString(string(privKeyHex))
+	if err != nil {
+		panic(err)
+	}
+	prv, err2 := crypto.UnmarshalPrivateKey(prvBytes)
+	if err2 != nil {
+		panic(err2)
+	}
+	localPeer = peer_service.New(prv,  ProcessMessage)
 }
 
 //export GetKey
@@ -187,4 +204,3 @@ func StartProfiler() C.int {
 	return C.int(<-portChannel)
 }
 
-func main() {}
