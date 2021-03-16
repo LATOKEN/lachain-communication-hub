@@ -155,6 +155,7 @@ func TestMassSend2Nodes(t *testing.T) {
 	}
 }
 
+
 func TestReconnect2Nodes(t *testing.T) {
 	loggo.ConfigureLoggers("<root>=TRACE")
 
@@ -257,84 +258,3 @@ func TestBigMessage(t *testing.T) {
 	}
 }
 
-func TestConcurrentBootstraps(t *testing.T) {
-	loggo.ConfigureLoggers("<root>=DEBUG")
-
-	repeatCount := 10
-
-	peers := make([]*peer_service.PeerService, 0)
-	pub_keys := make([][]byte, 0)
-
-	inited := make(chan bool)
-	counter := make(chan bool)
-	done := make(chan bool)
-	fail := make(chan bool)
-
-	goldenMessage := []byte("ghdhgfhgfh")
-
-	handler := func(msg []byte) {
-		log.Infof("[%s], %x\n", msg, msg)
-		if !bytes.Equal(msg, goldenMessage) {
-			log.Errorf("bad response")
-			fail <- true
-		} else {
-			counter <- true
-		}
-	}
-
-	for i := 0; i < repeatCount; i++ {
-		go func(idx int) {
-			priv_key, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
-			registerBootstrap(priv_key, fmt.Sprintf(":%d", 62000+idx))
-			p, k := makeServerPeer(priv_key, handler)
-			peers = append(peers, p)
-			pub_keys = append(pub_keys, k)
-			inited <- true
-		}(i)
-	}
-
-	defer func() {
-		for i := 0; i < repeatCount; i++ {
-			peers[i].Stop()
-		}
-	}()
-
-	// wait for init completion
-	for i := 0; i < repeatCount; i++ {
-		<-inited
-	}
-
-	// send repeatCount - 1 messages
-	sent := 0
-	for i, p := range peers {
-		if i == 0 {
-			continue
-		}
-		pkstr := hex.EncodeToString(pub_keys[i-1])
-		if p.SendMessageToPeer(pkstr, goldenMessage) {
-			sent++
-		}
-	}
-
-	// wait for all messages during a minute
-	go func() {
-		for i := 0; i < sent; i++ {
-			<-counter
-		}
-		done <- true
-	}()
-
-	ticker := time.NewTicker(time.Minute)
-	select {
-	case <-fail:
-		ticker.Stop()
-		log.Errorf("Incorrect message received")
-		t.Error("Incorrect message received")
-	case <-done:
-		ticker.Stop()
-		log.Infof("Finished")
-	case <-ticker.C:
-		log.Errorf("Failed to receive message in time")
-		t.Error("Failed to receive message in time")
-	}
-}
