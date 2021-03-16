@@ -17,9 +17,10 @@ type Config struct {
 	Idx        uint32 `json: "index"`
 	Port       uint32 `json: "port"`
 	Bootstraps string `json: "bootstraps"`
+	Repeats    uint32 `json: "repeatCount"`
 }
 
-func generateLocalConfig(peerNumber uint, port uint) {
+func generateLocalConfig(peerNumber uint, port uint,  repeat uint) {
 	privateKeys := make([]p2p_crypto.PrivKey, peerNumber, peerNumber)
 	for i := uint(0); i < peerNumber; i++ {
 		privateKeys[i], _, _ = p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
@@ -49,6 +50,7 @@ func generateLocalConfig(peerNumber uint, port uint) {
 			Idx:        uint32(i),
 			Port:       nodePort,
 			Bootstraps: peerList,
+			Repeats: 	uint32(repeat),
 		}
 
 		databin,  err := json.Marshal(data)
@@ -81,7 +83,7 @@ func generateLocalConfig(peerNumber uint, port uint) {
 	f.Close()
 }
 
-func generateRemoteConfig(ips string, port uint, sshkeypath string) {
+func generateRemoteConfig(ips string, port uint, sshkeypath string,  repeat uint) {
 	ipList := strings.Split(ips, ",")
 	peerNumber := len(ipList)
 	privateKeys := make([]p2p_crypto.PrivKey, peerNumber, peerNumber)
@@ -110,6 +112,7 @@ func generateRemoteConfig(ips string, port uint, sshkeypath string) {
 			Idx:        uint32(i),
 			Port:       uint32(port),
 			Bootstraps: peerList,
+			Repeats: 	uint32(repeat),
 		}
 
 		databin,  err := json.Marshal(data)
@@ -172,15 +175,17 @@ func main() {
 	var port uint
 	var ips string
 	var sshkeypath string
+	var repeat uint
 	flag.UintVar(&peerNumber, "peerNumber", 4, "Specify number of peers in test, should match number of peers in ips for remote tests, default value is 4", )
 	flag.UintVar(&port, "port", 7070, "Base port value for local tests and port for remote hosts, default value is 7070", )
 	flag.StringVar(&ips, "ips", "", "Comma-separated list of hosts for remote tests,  empty for local tests, default value is empty", )
 	flag.StringVar(&sshkeypath, "key", "", "Path to key file to use in ssh for remote tests, empty for local tests, default value is empty", )
+	flag.UintVar(&repeat, "repeat", 100, "Repeat count for RBC emulation, default value is 100", )
 	flag.Parse()
 
 	if len(ips) > 0 {
-		generateRemoteConfig(ips, port, sshkeypath)
+		generateRemoteConfig(ips, port, sshkeypath, repeat)
 	} else {
-		generateLocalConfig(peerNumber, port)
+		generateLocalConfig(peerNumber, port,  repeat)
 	}
 }
