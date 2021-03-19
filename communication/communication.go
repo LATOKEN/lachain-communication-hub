@@ -3,14 +3,11 @@ package communication
 import (
 	"bufio"
 	"encoding/binary"
-	"github.com/juju/loggo"
 	"hash/crc32"
 	"io"
 
 	"github.com/libp2p/go-libp2p-core/network"
 )
-
-var log = loggo.GetLogger("communication")
 
 type MsgIntegrityError struct{}
 
@@ -79,10 +76,8 @@ func ReadFromReader(reader *bufio.Reader) (MessageFrame, error) {
 		err = MsgIntegrityError{}
 		return MessageFrame{}, err
 	}
-	log.Tracef("Read header of message len = %d", bytesLeft)
 	result := make([]byte, bytesLeft)
 	_, err = io.ReadFull(reader, result)
-	log.Tracef("Read body of message len = %d bytes", len(result))
 	if err != nil {
 		return MessageFrame{}, err
 	}

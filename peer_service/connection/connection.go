@@ -61,6 +61,10 @@ var (
 		Name: "lachain_hub_inbound_reconnects",
 		Help: "The total number of times when inbound stream was reset",
 	})
+	messagesInQueue = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "lachain_hub_queued_messages",
+		Help: "Number of queued messages by peer",
+	}, []string{"peer"})
 )
 
 const MaxTryToConnect = 3
@@ -110,12 +114,8 @@ func (connection *Connection) init(
 	connection.onMessage = onMessage
 	connection.availableRelays = availableRelays
 	connection.getPeers = getPeers
-	connection.inboundTPS = throughput.New(time.Second, func(sum float64, n int32, duration time.Duration) {
-		log.Debugf("Inbound traffic from peer %v: %.1f bytes/s, %v messages, avg message = %1.f", id.Pretty(), sum/duration.Seconds(), n, sum/float64(n))
-	})
-	connection.outboundTPS = throughput.New(time.Second, func(sum float64, n int32, duration time.Duration) {
-		log.Debugf("Outbound traffic from peer %v: %.1f bytes/s, %v messages, avg message = %.1f", id.Pretty(), sum/duration.Seconds(), n, sum/float64(n))
-	})
+	connection.inboundTPS = throughput.New(time.Second, func(sum float64, n int32, duration time.Duration) {})
+	connection.outboundTPS = throughput.New(time.Second, func(sum float64, n int32, duration time.Duration) {})
 }
 
 func New(
@@ -174,7 +174,6 @@ func (connection *Connection) receiveMessageCycle() {
 				connection.resetInboundStream()
 				continue
 			}
-			log.Tracef("Read message from peer %v, length = %d", connection.PeerId.Pretty(), len(frame.Data()))
 			connection.inboundTPS.AddMeasurement(float64(len(frame.Data())))
 
 			switch frame.Kind() {
@@ -227,6 +226,7 @@ func (connection *Connection) sendMessageCycle() {
 
 		if msgToSend == nil {
 			value, err := connection.messageQueue.DequeueOrWait()
+			messagesInQueue.WithLabelValues(connection.PeerId.Pretty()).Set(float64(connection.messageQueue.GetLen()))
 			if err != nil {
 				log.Errorf("Failed to wait for message to send to peer %v: %v", connection.PeerId.Pretty(), err)
 			}
@@ -294,7 +294,7 @@ func (connection *Connection) Send(msg []byte) {
 	}
 
 	connection.messageQueue.Enqueue(msg)
-	log.Tracef("%v messages in queue for peer %v", connection.messageQueue.GetLen(), connection.PeerId.Pretty())
+	messagesInQueue.WithLabelValues(connection.PeerId.Pretty()).Set(float64(connection.messageQueue.GetLen()))
 }
 
 func (connection *Connection) sendSignature() {
