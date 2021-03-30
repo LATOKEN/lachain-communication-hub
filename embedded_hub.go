@@ -103,14 +103,14 @@ func GetMessages(buffer unsafe.Pointer, maxLength C.int) C.int {
 }
 
 //export Init
-func Init(signaturePtr unsafe.Pointer, signatureLength C.int) C.int {
+func Init(signaturePtr unsafe.Pointer, signatureLength C.int, metricsPort C.int) C.int {
 	mutex.Lock()
 	defer mutex.Unlock()
 	log.Tracef("Received: Init Request")
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
 		for {
-			err := http.ListenAndServe(":7072", nil)
+			err := http.ListenAndServe(fmt.Sprintf(":%d", int(metricsPort)), nil)
 			if err != nil {
 				log.Errorf("Error while serving metrics: %v", err)
 			}

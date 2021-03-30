@@ -59,13 +59,13 @@ namespace Lachain.CommunicationHub.Net
             }
         }
 
-        public static bool Init(byte[] signature)
+        public static bool Init(byte[] signature, int hubMetricsPort)
         {
             unsafe
             {
                 fixed (byte* signaturePtr = signature)
                 {
-                    return Imports.HubInit.Value(signaturePtr, signature.Length) == 1;
+                    return Imports.HubInit.Value(signaturePtr, signature.Length, hubMetricsPort) == 1;
                 }
             }
         }
