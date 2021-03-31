@@ -14,6 +14,7 @@ namespace Lachain.CommunicationHub.Net
         internal readonly Lazy<HubInit> HubInit;
         internal readonly Lazy<HubGetKey> HubGetKey;
         internal readonly Lazy<StartProfiler> StartProfiler;
+        internal readonly Lazy<HubGenerateNewKey> GenerateNewKey;
 
 
         const string Lib = "hub";
@@ -34,6 +35,7 @@ namespace Lachain.CommunicationHub.Net
             HubInit = LazyDelegate<HubInit>();
             HubGetKey = LazyDelegate<HubGetKey>();
             StartProfiler = LazyDelegate<StartProfiler>();
+            GenerateNewKey = LazyDelegate<HubGenerateNewKey>();
         }
 
         Lazy<TDelegate> LazyDelegate<TDelegate>()
@@ -45,15 +47,18 @@ namespace Lachain.CommunicationHub.Net
             );
         }
 
-        public static void Start(string bootstrapAddress)
+        public static void Start(string bootstrapAddress,  string privKeyHex)
         {
             unsafe
             {
                 var bootstrapAddressBytes = Encoding.UTF8.GetBytes(bootstrapAddress);
+                var privKeyHexBytes = Encoding.UTF8.GetBytes(privKeyHex);
                 fixed (byte* bootstrapAddressPtr = bootstrapAddressBytes)
+                fixed (byte* privKeyHexPtr = privKeyHexBytes)
                 {
                     Imports.StartHub.Value(
-                        bootstrapAddressPtr, bootstrapAddressBytes.Length
+                        bootstrapAddressPtr, bootstrapAddressBytes.Length,
+                        privKeyHexPtr, privKeyHexBytes.Length
                     );
                 }
             }
@@ -164,6 +169,26 @@ namespace Lachain.CommunicationHub.Net
                     Imports.LogLevel.Value(ptr, bytes.Length);
                 }
             }
+        }
+
+        public static string GenerateNewHubKey()
+        {
+            byte[] privHex;
+            int len;
+            unsafe
+            {
+                fixed (byte* ptr = privHex)
+                {
+                    len = Imports.GenerateNewKey.Value(ptr, 0);
+                }
+                if (len > privHex.Length)
+                    privHex = new byte[len];
+                fixed (byte* ptr = privHex)
+                {
+                    len = Imports.GenerateNewKey.Value(ptr, len);
+                }
+            }
+            return Encoding.UTF8.GetString(privHex);
         }
     }
 }

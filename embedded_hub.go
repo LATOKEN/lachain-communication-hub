@@ -4,14 +4,19 @@ package main
 import "C"
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"github.com/enriquebris/goconcurrentqueue"
 	"github.com/juju/loggo"
+<<<<<<< HEAD
+=======
+	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/peer"
+>>>>>>> 9584713... add ability to set private key from client
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"lachain-communication-hub/config"
-	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer_service"
 	"net"
 	"net/http"
@@ -38,12 +43,19 @@ func ProcessMessage(msg []byte) {
 }
 
 //export StartHub
-func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int) {
+func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, privKeyHex *C.char, privKeyHexLen C.int) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen))
-	priv_key := host.GetPrivateKeyForHost("_h1")
-	localPeer = peer_service.New(priv_key, ProcessMessage)
+	prvBytes, err := hex.DecodeString(C.GoStringN(privKeyHex, privKeyHexLen))
+	if err != nil {
+		panic(err)
+	}
+	privKey, err2 := crypto.UnmarshalPrivateKey(prvBytes)
+	if err2 != nil {
+		panic(err2)
+	}
+	localPeer = peer_service.New(privKey, ProcessMessage)
 }
 
 //export GetKey
@@ -187,4 +199,29 @@ func StartProfiler() C.int {
 	return C.int(<-portChannel)
 }
 
+//export GenerateNewKey
+func GenerateNewKey(buffer *C.char, bufferLen C.int) C.int {
+	prv, _, err := crypto.GenerateECDSAKeyPair(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+
+	id, _ := peer.IDFromPrivateKey(prv)
+
+	prvBytes, err := crypto.MarshalPrivateKey(prv)
+	if err != nil {
+		panic(err)
+	}
+
+	prvHex := fmt.Sprintf("%s,%s", hex.EncodeToString(prvBytes), id)
+
+	if len(prvHex) > int(bufferLen) {
+		return C.int(len(prvHex))
+	}
+
+	C.memcpy(unsafe.Pointer(&prvHex), unsafe.Pointer(buffer), C.ulong(len(prvHex)))
+	return C.int(len(prvHex))
+}
+
 func main() {}
+
