@@ -200,7 +200,7 @@ func StartProfiler() C.int {
 }
 
 //export GenerateNewKey
-func GenerateNewKey(buffer *C.char, bufferLen C.int) C.int {
+func GenerateNewKey(buffer unsafe.Pointer, bufferLen C.int) C.int {
 	prv, _, err := crypto.GenerateECDSAKeyPair(rand.Reader)
 	if err != nil {
 		panic(err)
@@ -219,8 +219,9 @@ func GenerateNewKey(buffer *C.char, bufferLen C.int) C.int {
 		return C.int(len(prvHex))
 	}
 
-	C.memcpy(unsafe.Pointer(&prvHex), unsafe.Pointer(buffer), C.ulong(len(prvHex)))
-	return C.int(len(prvHex))
+	data := []byte(prvHex)
+	C.memcpy(buffer, unsafe.Pointer(&data[0]), C.size_t(len(data)))
+	return C.int(len(data))
 }
 
 func main() {}

@@ -14,7 +14,7 @@ namespace Lachain.CommunicationHub.Net
         internal readonly Lazy<HubInit> HubInit;
         internal readonly Lazy<HubGetKey> HubGetKey;
         internal readonly Lazy<StartProfiler> StartProfiler;
-        internal readonly Lazy<HubGenerateNewKey> GenerateNewKey;
+        internal readonly Lazy<HubGenerateNewKey> GenerateNewKeyHub;
 
 
         const string Lib = "hub";
@@ -35,7 +35,7 @@ namespace Lachain.CommunicationHub.Net
             HubInit = LazyDelegate<HubInit>();
             HubGetKey = LazyDelegate<HubGetKey>();
             StartProfiler = LazyDelegate<StartProfiler>();
-            GenerateNewKey = LazyDelegate<HubGenerateNewKey>();
+            GenerateNewKeyHub = LazyDelegate<HubGenerateNewKey>();
         }
 
         Lazy<TDelegate> LazyDelegate<TDelegate>()
@@ -173,19 +173,15 @@ namespace Lachain.CommunicationHub.Net
 
         public static string GenerateNewHubKey()
         {
-            byte[] privHex;
-            int len;
+            const int maxBuffer = 2000;
+            byte[] privHex = new byte[maxBuffer];
+            int len = maxBuffer;
             unsafe
             {
                 fixed (byte* ptr = privHex)
                 {
-                    len = Imports.GenerateNewKey.Value(ptr, 0);
-                }
-                if (len > privHex.Length)
-                    privHex = new byte[len];
-                fixed (byte* ptr = privHex)
-                {
-                    len = Imports.GenerateNewKey.Value(ptr, len);
+                    len = Imports.GenerateNewKeyHub.Value(ptr, len);
+                    privHex.Take(len);
                 }
             }
             return Encoding.UTF8.GetString(privHex);
