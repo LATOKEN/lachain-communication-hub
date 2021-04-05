@@ -4,14 +4,16 @@ package main
 import "C"
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"github.com/enriquebris/goconcurrentqueue"
 	"github.com/juju/loggo"
+	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"lachain-communication-hub/config"
-	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer_service"
 	"net"
 	"net/http"
@@ -38,12 +40,16 @@ func ProcessMessage(msg []byte) {
 }
 
 //export StartHub
-func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int) {
+func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, privKey unsafe.Pointer, privKeyLen C.int) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen))
-	priv_key := host.GetPrivateKeyForHost("_h1")
-	localPeer = peer_service.New(priv_key, ProcessMessage)
+	prvBytes := C.GoBytes(privKey, privKeyLen)
+	prv, err2 := crypto.UnmarshalPrivateKey(prvBytes)
+	if err2 != nil {
+		panic(err2)
+	}
+	localPeer = peer_service.New(prv, ProcessMessage)
 }
 
 //export GetKey
@@ -103,14 +109,14 @@ func GetMessages(buffer unsafe.Pointer, maxLength C.int) C.int {
 }
 
 //export Init
-func Init(signaturePtr unsafe.Pointer, signatureLength C.int) C.int {
+func Init(signaturePtr unsafe.Pointer, signatureLength C.int, metricsPort C.int) C.int {
 	mutex.Lock()
 	defer mutex.Unlock()
 	log.Tracef("Received: Init Request")
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
 		for {
-			err := http.ListenAndServe(":7072", nil)
+			err := http.ListenAndServe(fmt.Sprintf(":%d", int(metricsPort)), nil)
 			if err != nil {
 				log.Errorf("Error while serving metrics: %v", err)
 			}
@@ -187,4 +193,30 @@ func StartProfiler() C.int {
 	return C.int(<-portChannel)
 }
 
+//export GenerateNewKey
+func GenerateNewKey(buffer unsafe.Pointer, bufferLen C.int) C.int {
+	prv, _, err := crypto.GenerateECDSAKeyPair(rand.Reader)
+	if err != nil {
+		panic(err)
+	}
+
+	id, _ := peer.IDFromPrivateKey(prv)
+
+	prvBytes, err := crypto.MarshalPrivateKey(prv)
+	if err != nil {
+		panic(err)
+	}
+
+	prvHex := fmt.Sprintf("%s,%s", hex.EncodeToString(prvBytes), id)
+
+	if len(prvHex) > int(bufferLen) {
+		return C.int(len(prvHex))
+	}
+
+	data := []byte(prvHex)
+	C.memcpy(buffer, unsafe.Pointer(&data[0]), C.size_t(len(data)))
+	return C.int(len(data))
+}
+
 func main() {}
+

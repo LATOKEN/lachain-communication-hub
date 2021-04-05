@@ -1,14 +1,14 @@
 namespace Lachain.CommunicationHub.Net
 {
     [SymbolName("StartHub")]
-    public unsafe delegate int HubStart(byte* bootstrapAddress, int bootstrapAddressLen);
-
+    public unsafe delegate int HubStart(byte* bootstrapAddress, int bootstrapAddressLen,
+                                        byte* privKey, int privKeyLen);
 
     [SymbolName("GetKey")]
     public unsafe delegate int HubGetKey(byte* buffer, int maxLength);
 
     [SymbolName("Init")]
-    public unsafe delegate int HubInit(byte* signature, int signatureLength);
+    public unsafe delegate int HubInit(byte* signature, int signatureLength, int hubMetricsPort);
 
     [SymbolName("SendMessage")]
     public unsafe delegate int HubSendMessage(
@@ -27,4 +27,7 @@ namespace Lachain.CommunicationHub.Net
     
     [SymbolName("StartProfiler")]
     public delegate int StartProfiler();
+
+    [SymbolName("GenerateNewKey")]
+    public unsafe delegate int HubGenerateNewKey(byte* str, int len);
 }

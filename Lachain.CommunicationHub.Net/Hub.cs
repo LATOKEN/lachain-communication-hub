@@ -14,6 +14,7 @@ namespace Lachain.CommunicationHub.Net
         internal readonly Lazy<HubInit> HubInit;
         internal readonly Lazy<HubGetKey> HubGetKey;
         internal readonly Lazy<StartProfiler> StartProfiler;
+        internal readonly Lazy<HubGenerateNewKey> GenerateNewKeyHub;
 
 
         const string Lib = "hub";
@@ -34,6 +35,7 @@ namespace Lachain.CommunicationHub.Net
             HubInit = LazyDelegate<HubInit>();
             HubGetKey = LazyDelegate<HubGetKey>();
             StartProfiler = LazyDelegate<StartProfiler>();
+            GenerateNewKeyHub = LazyDelegate<HubGenerateNewKey>();
         }
 
         Lazy<TDelegate> LazyDelegate<TDelegate>()
@@ -45,27 +47,29 @@ namespace Lachain.CommunicationHub.Net
             );
         }
 
-        public static void Start(string bootstrapAddress)
+        public static void Start(string bootstrapAddress,  byte[] privKey)
         {
             unsafe
             {
                 var bootstrapAddressBytes = Encoding.UTF8.GetBytes(bootstrapAddress);
                 fixed (byte* bootstrapAddressPtr = bootstrapAddressBytes)
+                fixed (byte* privKeyPtr = privKey)
                 {
                     Imports.StartHub.Value(
-                        bootstrapAddressPtr, bootstrapAddressBytes.Length
+                        bootstrapAddressPtr, bootstrapAddressBytes.Length,
+                        privKeyPtr, privKey.Length
                     );
                 }
             }
         }
 
-        public static bool Init(byte[] signature)
+        public static bool Init(byte[] signature, int hubMetricsPort)
         {
             unsafe
             {
                 fixed (byte* signaturePtr = signature)
                 {
-                    return Imports.HubInit.Value(signaturePtr, signature.Length) == 1;
+                    return Imports.HubInit.Value(signaturePtr, signature.Length, hubMetricsPort) == 1;
                 }
             }
         }
@@ -164,6 +168,21 @@ namespace Lachain.CommunicationHub.Net
                     Imports.LogLevel.Value(ptr, bytes.Length);
                 }
             }
+        }
+
+        public static string GenerateNewHubKey()
+        {
+            const int maxBuffer = 2000;
+            byte[] privHex = new byte[maxBuffer];
+            int len = maxBuffer;
+            unsafe
+            {
+                fixed (byte* ptr = privHex)
+                {
+                    len = Imports.GenerateNewKeyHub.Value(ptr, len);
+                }
+            }
+            return Encoding.UTF8.GetString(privHex.Take(len).ToArray());
         }
     }
 }
