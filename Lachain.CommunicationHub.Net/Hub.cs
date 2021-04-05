@@ -181,10 +181,9 @@ namespace Lachain.CommunicationHub.Net
                 fixed (byte* ptr = privHex)
                 {
                     len = Imports.GenerateNewKeyHub.Value(ptr, len);
-                    privHex.Take(len);
                 }
             }
-            return Encoding.UTF8.GetString(privHex);
+            return Encoding.UTF8.GetString(privHex.Take(len).ToArray());
         }
     }
 }
