@@ -10,11 +10,8 @@ import (
 	"fmt"
 	"github.com/enriquebris/goconcurrentqueue"
 	"github.com/juju/loggo"
-<<<<<<< HEAD
-=======
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
->>>>>>> 9584713... add ability to set private key from client
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/peer_service"
@@ -43,19 +40,16 @@ func ProcessMessage(msg []byte) {
 }
 
 //export StartHub
-func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, privKeyHex *C.char, privKeyHexLen C.int) {
+func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, privKey unsafe.Pointer, privKeyLen C.int) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen))
-	prvBytes, err := hex.DecodeString(C.GoStringN(privKeyHex, privKeyHexLen))
-	if err != nil {
-		panic(err)
-	}
-	privKey, err2 := crypto.UnmarshalPrivateKey(prvBytes)
+	prvBytes := C.GoBytes(privKey, privKeyLen)
+	prv, err2 := crypto.UnmarshalPrivateKey(prvBytes)
 	if err2 != nil {
 		panic(err2)
 	}
-	localPeer = peer_service.New(privKey, ProcessMessage)
+	localPeer = peer_service.New(prv, ProcessMessage)
 }
 
 //export GetKey
