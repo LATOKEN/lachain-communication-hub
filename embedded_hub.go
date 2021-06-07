@@ -40,7 +40,8 @@ func ProcessMessage(msg []byte) {
 }
 
 //export StartHub
-func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, privKey unsafe.Pointer, privKeyLen C.int) {
+func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, privKey unsafe.Pointer, privKeyLen C.int,
+	networkName *C.char, networkNameLen C.int, version C.int, minimalSupportedVersion C.int) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen))
@@ -49,7 +50,8 @@ func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, privKey unsaf
 	if err2 != nil {
 		panic(err2)
 	}
-	localPeer = peer_service.New(prv, ProcessMessage)
+	localPeer = peer_service.New(prv, C.GoStringN(networkName, networkNameLen), int32(version), int32(minimalSupportedVersion),
+		ProcessMessage)
 }
 
 //export GetKey

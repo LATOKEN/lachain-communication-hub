@@ -28,8 +28,8 @@ func registerBootstrap(prv p2p_crypto.PrivKey, port string) {
 	log.Debugf("Register Bootstrap address: %s", bootstrapAddress)
 }
 
-func makeServerPeer(priv_key p2p_crypto.PrivKey, handler func([]byte)) (*peer_service.PeerService, []byte) {
-	p := peer_service.New(priv_key, handler)
+func makeServerPeer(priv_key p2p_crypto.PrivKey, network string, version int32, minPeerVersion int32, handler func([]byte)) (*peer_service.PeerService, []byte) {
+	p := peer_service.New(priv_key, network, version, minPeerVersion, handler)
 
 	var id []byte
 	for {
@@ -83,9 +83,9 @@ func TestSingleSend(t *testing.T) {
 		done <- true
 	}
 
-	p1, _ := makeServerPeer(priv_key1, func([]byte) {})
+	p1, _ := makeServerPeer(priv_key1, "unittest", 1, 0, func([]byte) {})
 	defer p1.Stop()
-	p2, pub2 := makeServerPeer(priv_key2, handler)
+	p2, pub2 := makeServerPeer(priv_key2, "unittest", 1, 0, handler)
 	defer p2.Stop()
 	p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage)
 
@@ -126,10 +126,10 @@ func TestMassSend2Nodes(t *testing.T) {
 		}
 	}
 
-	p1, _ := makeServerPeer(priv_key1, func([]byte) {})
+	p1, _ := makeServerPeer(priv_key1, "unittest", 1, 0, func([]byte) {})
 	defer p1.Stop()
 
-	p2, pub2 := makeServerPeer(priv_key2, handler)
+	p2, pub2 := makeServerPeer(priv_key2, "unittest", 1, 0, handler)
 	defer p2.Stop()
 
 	pub2str := hex.EncodeToString(pub2)
@@ -181,10 +181,10 @@ func TestReconnect2Nodes(t *testing.T) {
 		}
 	}
 
-	p1, _ := makeServerPeer(priv_key1, func([]byte) {})
+	p1, _ := makeServerPeer(priv_key1, "unittest", 1, 0, func([]byte) {})
 	defer p1.Stop()
 
-	p2, pub2 := makeServerPeer(priv_key2, handler)
+	p2, pub2 := makeServerPeer(priv_key2, "unittest", 1, 0, handler)
 	defer p2.Stop()
 
 	pub2str := hex.EncodeToString(pub2)
@@ -196,7 +196,7 @@ func TestReconnect2Nodes(t *testing.T) {
 		//for {
 			time.Sleep(1000 * time.Millisecond)
 			p2.Stop()
-			p2, _ = makeServerPeer(priv_key2, handler)
+			p2, _ = makeServerPeer(priv_key2, "unittest", 1, 0, handler)
 		//}
 	}()
 
@@ -238,10 +238,10 @@ func TestBigMessage(t *testing.T) {
 		done <- true
 	}
 
-	p1, _ := makeServerPeer(priv_key1, func([]byte) {})
+	p1, _ := makeServerPeer(priv_key1, "unittest", 1, 0, func([]byte) {})
 	defer p1.Stop()
 
-	p2, pub2 := makeServerPeer(priv_key2, handler)
+	p2, pub2 := makeServerPeer(priv_key2, "unittest", 1, 0, handler)
 	defer p2.Stop()
 
 	p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage)
@@ -286,7 +286,7 @@ func TestConcurrentBootstraps(t *testing.T) {
 		go func(idx int) {
 			priv_key, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
 			registerBootstrap(priv_key, fmt.Sprintf(":%d", 62000+idx))
-			p, k := makeServerPeer(priv_key, handler)
+			p, k := makeServerPeer(priv_key, "unittest", 1, 0, handler)
 			peers = append(peers, p)
 			pub_keys = append(pub_keys, k)
 			inited <- true
@@ -336,5 +336,60 @@ func TestConcurrentBootstraps(t *testing.T) {
 	case <-ticker.C:
 		log.Errorf("Failed to receive message in time")
 		t.Error("Failed to receive message in time")
+	}
+}
+
+func TestProtocol(t *testing.T) {
+	loggo.ConfigureLoggers("<root>=TRACE")
+
+	priv_key1, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+	priv_key2, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+	priv_key3, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+	priv_key4, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+
+	registerBootstrap(priv_key1, ":41011")
+	registerBootstrap(priv_key2, ":41012")
+	registerBootstrap(priv_key3, ":41013")
+	registerBootstrap(priv_key4, ":41014")
+
+	done := make(chan bool)
+	wrong := make(chan bool)
+
+	goldenMessage := []byte("dfstrdfgcrjtdg")
+
+	handler := func(msg []byte) {
+		done <- true
+	}
+
+	wrongHandler := func(msg []byte) {
+		wrong <- true
+	}
+
+	p1, pub1 := makeServerPeer(priv_key1, "unittest", 10, 9, wrongHandler)
+	defer p1.Stop()
+	p2, pub2 := makeServerPeer(priv_key2, "unittest", 9, 0, handler)
+	defer p2.Stop()
+	p3, pub3 := makeServerPeer(priv_key3, "unittest", 8, 0, wrongHandler)
+	defer p2.Stop()
+	p4, pub4 := makeServerPeer(priv_key4, "wrongnet", 10, 9, wrongHandler)
+	defer p2.Stop()
+	p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage)
+	p1.SendMessageToPeer(hex.EncodeToString(pub3), goldenMessage)
+	p1.SendMessageToPeer(hex.EncodeToString(pub4), goldenMessage)
+	p3.SendMessageToPeer(hex.EncodeToString(pub1), goldenMessage)
+	p4.SendMessageToPeer(hex.EncodeToString(pub1), goldenMessage)
+
+	select {
+	case <-done:
+		log.Infof("Finished")
+	case <-time.After(10 * time.Second):
+		log.Errorf("Failed to receive message in time")
+		t.Error("Failed to receive message in time")
+	}
+
+	select {
+	case <-wrong:
+		t.Fatal("Wrong peer connected")
+	case <-time.After(time.Second):
 	}
 }
