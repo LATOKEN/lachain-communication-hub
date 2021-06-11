@@ -7,6 +7,7 @@ import (
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p-core/protocol"
 	swarm "github.com/libp2p/go-libp2p-swarm"
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/prometheus/client_golang/prometheus"
@@ -73,6 +74,7 @@ type Connection struct {
 	PeerId        peer.ID
 	PeerAddress   ma.Multiaddr
 	PeerPublicKey string
+	PeerProtocol  string
 
 	host                 *core.Host
 	myAddress            ma.Multiaddr
@@ -96,12 +98,13 @@ type Connection struct {
 }
 
 func (connection *Connection) init(
-	host *core.Host, id peer.ID, myAddress ma.Multiaddr,
+	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr,
 	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func() []peer.ID, getPeers func() []*Metadata,
 ) {
 	connection.host = host
 	connection.PeerId = id
+	connection.PeerProtocol = protocol
 	connection.lifecycleFinished = make(chan struct{})
 	connection.sendCycleFinished = make(chan struct{})
 	connection.peerCycleFinished = make(chan struct{})
@@ -119,13 +122,13 @@ func (connection *Connection) init(
 }
 
 func New(
-	host *core.Host, id peer.ID, myAddress ma.Multiaddr, peerAddress ma.Multiaddr, signature []byte,
+	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr, peerAddress ma.Multiaddr, signature []byte,
 	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func() []peer.ID, getPeers func() []*Metadata,
 ) *Connection {
 	log.Debugf("Creating connection with peer %v (address %v)", id.Pretty(), peerAddress.String())
 	connection := new(Connection)
-	connection.init(host, id, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
+	connection.init(host, id, protocol, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
 	connection.PeerAddress = peerAddress
 	go connection.receiveMessageCycle()
 	go connection.sendMessageCycle()
@@ -137,13 +140,13 @@ func New(
 }
 
 func FromStream(
-	host *core.Host, stream network.Stream, myAddress ma.Multiaddr, signature []byte,
+	host *core.Host, stream network.Stream, myAddress ma.Multiaddr, signature []byte, protocol string,
 	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func() []peer.ID, getPeers func() []*Metadata,
 ) *Connection {
 	log.Debugf("Creating connection with peer %v from inbound stream", stream.Conn().RemotePeer().Pretty())
 	connection := new(Connection)
-	connection.init(host, stream.Conn().RemotePeer(), myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
+	connection.init(host, stream.Conn().RemotePeer(), protocol, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
 	connection.PeerAddress = stream.Conn().RemoteMultiaddr()
 	connection.inboundStream = stream
 	if signature != nil {
@@ -481,7 +484,8 @@ func (connection *Connection) checkOutboundStream() error {
 	}
 	if connection.outboundStream == nil {
 		log.Debugf("Peer %v has no stream, creating one", connection.PeerId.Pretty())
-		stream, err := (*connection.host).NewStream(context.Background(), connection.PeerId, "/")
+		stream, err := (*connection.host).NewStream(context.Background(), connection.PeerId,
+			protocol.ID(connection.PeerProtocol))
 		if err != nil {
 			return err
 		}
