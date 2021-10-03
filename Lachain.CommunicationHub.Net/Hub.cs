@@ -47,7 +47,7 @@ namespace Lachain.CommunicationHub.Net
             );
         }
 
-        public static void Start(string bootstrapAddress,  byte[] privKey, string networkName, int version, int minPeerVersion)
+        public static void Start(string bootstrapAddress,  byte[] privKey, string networkName, int version, int minPeerVersion, int chainId)
         {
             unsafe
             {
@@ -60,7 +60,7 @@ namespace Lachain.CommunicationHub.Net
                     Imports.StartHub.Value(
                         bootstrapAddressPtr, bootstrapAddressBytes.Length,
                         privKeyPtr, privKey.Length, networkNamePtr, networkNameBytes.Length, 
-                        version, minPeerVersion
+                        version, minPeerVersion,  chainId
                     );
                 }
             }

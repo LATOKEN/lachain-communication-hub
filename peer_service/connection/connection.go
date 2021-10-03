@@ -95,10 +95,11 @@ type Connection struct {
 	peerCycleFinished    chan struct{}
 	inboundTPS           *throughput.Calculator
 	outboundTPS          *throughput.Calculator
+	chainId				 byte
 }
 
 func (connection *Connection) init(
-	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr,
+	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr, chainId byte,
 	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func() []peer.ID, getPeers func() []*Metadata,
 ) {
@@ -109,6 +110,7 @@ func (connection *Connection) init(
 	connection.sendCycleFinished = make(chan struct{})
 	connection.peerCycleFinished = make(chan struct{})
 	connection.myAddress = myAddress
+	connection.chainId = chainId
 	connection.signatureSent = atomic.NewInt32(0)
 	connection.status = atomic.NewInt32(NotConnected)
 	connection.messageQueue = utils.NewMessageQueue()
@@ -122,13 +124,14 @@ func (connection *Connection) init(
 }
 
 func New(
-	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr, peerAddress ma.Multiaddr, signature []byte,
+	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr, peerAddress ma.Multiaddr, chainId byte,
+	signature []byte,
 	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func() []peer.ID, getPeers func() []*Metadata,
 ) *Connection {
 	log.Debugf("Creating connection with peer %v (address %v)", id.Pretty(), peerAddress.String())
 	connection := new(Connection)
-	connection.init(host, id, protocol, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
+	connection.init(host, id, protocol, myAddress, chainId, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
 	connection.PeerAddress = peerAddress
 	go connection.receiveMessageCycle()
 	go connection.sendMessageCycle()
@@ -140,13 +143,13 @@ func New(
 }
 
 func FromStream(
-	host *core.Host, stream network.Stream, myAddress ma.Multiaddr, signature []byte, protocol string,
+	host *core.Host, stream network.Stream, myAddress ma.Multiaddr, signature []byte, protocol string, chainId byte,
 	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func() []peer.ID, getPeers func() []*Metadata,
 ) *Connection {
 	log.Debugf("Creating connection with peer %v from inbound stream", stream.Conn().RemotePeer().Pretty())
 	connection := new(Connection)
-	connection.init(host, stream.Conn().RemotePeer(), protocol, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
+	connection.init(host, stream.Conn().RemotePeer(), protocol, myAddress, chainId, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
 	connection.PeerAddress = stream.Conn().RemoteMultiaddr()
 	connection.inboundStream = stream
 	if signature != nil {
@@ -346,10 +349,10 @@ func (connection *Connection) handleSignature(data []byte) {
 	signature, addressBytes := data[:65], data[65:]
 	peerIdBytes, err := connection.PeerId.Marshal()
 	if err != nil {
-		log.Errorf("Cannot create payload for signature check from peer %v: %v", connection.PeerId.Pretty(), err)
+		log.Errorf("Cannot create payload for signature check fr7om peer %v: %v", connection.PeerId.Pretty(), err)
 		return
 	}
-	publicKey, err := utils.EcRecover(peerIdBytes, signature)
+	publicKey, err := utils.EcRecover(peerIdBytes, signature, connection.chainId)
 	if err != nil {
 		log.Errorf("Signature check failed for peer %v, resetting connection: %v", connection.PeerId.Pretty(), err)
 		connection.resetInboundStream()
