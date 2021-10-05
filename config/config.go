@@ -14,7 +14,10 @@ var RelayIds []string
 
 var ipLookup = true
 
+var ChainId = byte(0)
+
 var lock = sync.Mutex{}
+
 
 func SetBootstrapAddress(addressesString string) {
 	lock.Lock()

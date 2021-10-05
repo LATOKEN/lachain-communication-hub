@@ -35,10 +35,9 @@ type PeerService struct {
 	networkName		  string
 	version           int32
 	minPeerVersion	  int32
-	chainId			  byte
 }
 
-func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupportedVersion int32, chainId byte,
+func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupportedVersion int32,
 	handler func([]byte)) *PeerService {
 	localHost := host.BuildNamedHost(priv_key)
 	log.Infof("my id: %v", localHost.ID())
@@ -63,7 +62,6 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	peerService.networkName = networkName
 	peerService.version = version
 	peerService.minPeerVersion = minimalSupportedVersion
-	peerService.chainId = chainId
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
 	peerService.host.SetStreamHandlerMatch(protocol.ID(protocolString), peerService.networkMatcher, peerService.onConnect)
 
@@ -99,7 +97,7 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
 	}
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
 	conn := connection.New(
-		&peerService.host, id, protocolString, peerService.myExternalAddress, address, peerService.chainId, nil,
+		&peerService.host, id, protocolString, peerService.myExternalAddress, address,  nil,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
@@ -121,7 +119,7 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 	// TODO: manage peers to preserve important ones & exclude extra
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
 	newConnect := connection.FromStream(
-		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, protocolString, peerService.chainId,
+		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, protocolString,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
@@ -161,7 +159,7 @@ func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata) 
 			continue
 		}
 		peerService.connections[newPeer.Id.Pretty()] = connection.New(
-			&peerService.host, newPeer.Id, protocolString, peerService.myExternalAddress, newPeer.Addr, peerService.chainId,
+			&peerService.host, newPeer.Id, protocolString, peerService.myExternalAddress, newPeer.Addr,
 			peerService.Signature,
 			peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 			peerService.AvailableRelays, peerService.GetPeers,
@@ -177,7 +175,7 @@ func (peerService *PeerService) SetSignature(signature []byte) bool {
 		log.Errorf("SetSignature: can't form data for signature check: %v", err)
 		return false
 	}
-	localPublicKey, err := utils.EcRecover(peerId, signature, peerService.chainId)
+	localPublicKey, err := utils.EcRecover(peerId, signature, config.ChainId)
 	if err != nil {
 		log.Errorf("%v", err)
 		return false

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
   <metadata>
-    <id>Lachain.CommunicationHub.Native</id>
+    <id>Lachain.CommunicationHub.NativeLib</id>
     <version>0.0.67</version>
-    <authors>Skird</authors>
-    <owners>Skird</owners>
+    <authors>LACHAIN</authors>
+    <owners>LACHAIN</owners>
     <license type="expression">MIT</license>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <projectUrl>https://github.com/latoken/lachain-communication-hub</projectUrl>
