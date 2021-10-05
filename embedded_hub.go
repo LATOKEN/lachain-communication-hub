@@ -24,8 +24,6 @@ import (
 	"unsafe"
 )
 
-import _ "net/http/pprof"
-
 var localPeer *peer_service.PeerService
 
 var log = loggo.GetLogger("embedded_hub")
@@ -44,7 +42,7 @@ func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, privKey unsaf
 	networkName *C.char, networkNameLen C.int, version C.int, minimalSupportedVersion C.int, chainId C.int) {
 	mutex.Lock()
 	defer mutex.Unlock()
-	config.ChainId = chainId
+	config.ChainId = byte(chainId)
 	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen))
 	prvBytes := C.GoBytes(privKey, privKeyLen)
 	prv, err2 := crypto.UnmarshalPrivateKey(prvBytes)
