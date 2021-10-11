@@ -5,15 +5,11 @@ script:
   - go test utils/utils_test.go
   - go test config/config_test.go
 
-before_deploy:
-  - mkdir build
-  - cp libhub.so build/libhub.so
-
 deploy:
   provider: releases
   api_key: "$GITHUB_TOKEN"
   file_glob: true
-  file: build/*
+  file: libhub.so
   skip_cleanup: true
   draft: true
   on:
