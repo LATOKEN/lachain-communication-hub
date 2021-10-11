@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 	"lachain-communication-hub/communication"
+	"lachain-communication-hub/config"
 	"lachain-communication-hub/throughput"
 	"lachain-communication-hub/utils"
 	"math/rand"
@@ -122,7 +123,8 @@ func (connection *Connection) init(
 }
 
 func New(
-	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr, peerAddress ma.Multiaddr, signature []byte,
+	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr, peerAddress ma.Multiaddr,
+	signature []byte,
 	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func() []peer.ID, getPeers func() []*Metadata,
 ) *Connection {
@@ -346,10 +348,10 @@ func (connection *Connection) handleSignature(data []byte) {
 	signature, addressBytes := data[:65], data[65:]
 	peerIdBytes, err := connection.PeerId.Marshal()
 	if err != nil {
-		log.Errorf("Cannot create payload for signature check from peer %v: %v", connection.PeerId.Pretty(), err)
+		log.Errorf("Cannot create payload for signature check fr7om peer %v: %v", connection.PeerId.Pretty(), err)
 		return
 	}
-	publicKey, err := utils.EcRecover(peerIdBytes, signature)
+	publicKey, err := utils.EcRecover(peerIdBytes, signature, config.ChainId)
 	if err != nil {
 		log.Errorf("Signature check failed for peer %v, resetting connection: %v", connection.PeerId.Pretty(), err)
 		connection.resetInboundStream()

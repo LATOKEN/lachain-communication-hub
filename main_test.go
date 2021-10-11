@@ -29,7 +29,7 @@ func registerBootstrap(prv p2p_crypto.PrivKey, port string) {
 }
 
 func makeServerPeer(priv_key p2p_crypto.PrivKey, network string, version int32, minPeerVersion int32, handler func([]byte)) (*peer_service.PeerService, []byte) {
-	p := peer_service.New(priv_key, network, version, minPeerVersion, handler)
+	p := peer_service.New(priv_key, network, version, minPeerVersion, 41, handler)
 
 	var id []byte
 	for {
@@ -47,7 +47,7 @@ func makeServerPeer(priv_key p2p_crypto.PrivKey, network string, version int32, 
 
 	fmt.Println("pubKey", hex.EncodeToString(pub))
 
-	signature, err := utils.LaSign(id, prv)
+	signature, err := utils.LaSign(id, prv, 41)
 	if err != nil {
 		panic(err)
 	}

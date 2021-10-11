@@ -8,13 +8,10 @@ import (
 	"github.com/juju/loggo"
 )
 
-const (
-	ChainId = 41
-)
 
 var log = loggo.GetLogger("utils")
 
-func LaSign(data []byte, prv *ecdsa.PrivateKey) ([]byte, error) {
+func LaSign(data []byte, prv *ecdsa.PrivateKey, chainId byte) ([]byte, error) {
 
 	dataHash := crypto.Keccak256(data)
 	signature, err := crypto.Sign(dataHash, prv)
@@ -22,18 +19,18 @@ func LaSign(data []byte, prv *ecdsa.PrivateKey) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	signature[64] = ChainId*2 + 35 + signature[64]
+	signature[64] = chainId*2 + 35 + signature[64]
 	return signature, nil
 }
 
-func EcRecover(data, sig []byte) (*ecdsa.PublicKey, error) {
+func EcRecover(data, sig []byte, chainId byte) (*ecdsa.PublicKey, error) {
 	dataHash := crypto.Keccak256(data)
 	if len(sig) != 65 {
 		return nil, fmt.Errorf("signature must be 65 bytes long")
 	}
 	recSig := make([]byte, 65)
 	copy(recSig, sig)
-	recSig[64] = (sig[64] - 36) / 2 / ChainId // Transform V
+	recSig[64] = (sig[64] - 36) / 2 / chainId // Transform V
 
 	rpk, err := crypto.Ecrecover(dataHash, recSig)
 	if err != nil {

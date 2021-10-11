@@ -97,7 +97,7 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
 	}
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
 	conn := connection.New(
-		&peerService.host, id, protocolString, peerService.myExternalAddress, address, nil,
+		&peerService.host, id, protocolString, peerService.myExternalAddress, address,  nil,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
@@ -159,7 +159,8 @@ func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata) 
 			continue
 		}
 		peerService.connections[newPeer.Id.Pretty()] = connection.New(
-			&peerService.host, newPeer.Id, protocolString, peerService.myExternalAddress, newPeer.Addr, peerService.Signature,
+			&peerService.host, newPeer.Id, protocolString, peerService.myExternalAddress, newPeer.Addr,
+			peerService.Signature,
 			peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 			peerService.AvailableRelays, peerService.GetPeers,
 		)
@@ -174,7 +175,7 @@ func (peerService *PeerService) SetSignature(signature []byte) bool {
 		log.Errorf("SetSignature: can't form data for signature check: %v", err)
 		return false
 	}
-	localPublicKey, err := utils.EcRecover(peerId, signature)
+	localPublicKey, err := utils.EcRecover(peerId, signature, config.ChainId)
 	if err != nil {
 		log.Errorf("%v", err)
 		return false
