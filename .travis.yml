@@ -1,6 +1,6 @@
 language: go
 install:
-  - go build extended_hub.go -o libhub.so
+  - go build 
 script:
   - go test utils/utils_test.go
   - go test config/config_test.go
