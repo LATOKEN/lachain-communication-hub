@@ -231,7 +231,7 @@ func (peerService *PeerService) SendMessageToPeer(publicKey string, msg []byte) 
 	defer peerService.unlock()
 
 	if conn := peerService.connectionByPublicKey(publicKey); conn != nil {
-		log.Tracef("Sending message to peer %v message length %d", conn.PeerId.Pretty(), len(msg))
+		//log.Tracef("Sending message to peer %v message length %d", conn.PeerId.Pretty(), len(msg))
 		conn.Send(msg)
 		return true
 	}
