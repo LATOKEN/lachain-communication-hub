@@ -1,7 +1,6 @@
 package host
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/juju/loggo"
 	"github.com/libp2p/go-libp2p"
-	circuit "github.com/libp2p/go-libp2p-circuit"
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
@@ -106,9 +104,8 @@ func BuildNamedHost(priv_key crypto.PrivKey) core.Host {
 		listenAddrs = libp2p.ListenAddrs()
 	}
 	host, err := libp2p.New(
-		context.Background(),
 		listenAddrs,
-		libp2p.EnableRelay(circuit.OptHop),
+		libp2p.EnableRelay(),
 		prvKeyOpt,
 	)
 	if err != nil {

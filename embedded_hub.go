@@ -8,11 +8,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/enriquebris/goconcurrentqueue"
-	"github.com/juju/loggo"
-	"github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/peer"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/peer_service"
 	"net"
@@ -22,11 +17,17 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+
+	"github.com/enriquebris/goconcurrentqueue"
+	"github.com/juju/loggo"
+	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/peer"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var localPeer *peer_service.PeerService
 
-var log = loggo.GetLogger("embedded_hub")
+// var log = loggo.GetLogger("embedded_hub")
 var ZeroPub = make([]byte, 33)
 
 var messages = goconcurrentqueue.NewFIFO()
@@ -221,4 +222,3 @@ func GenerateNewKey(buffer unsafe.Pointer, bufferLen C.int) C.int {
 }
 
 func main() {}
-
