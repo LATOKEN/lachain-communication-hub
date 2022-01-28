@@ -3,6 +3,14 @@ package connection
 import (
 	"context"
 	"errors"
+	"lachain-communication-hub/communication"
+	"lachain-communication-hub/config"
+	"lachain-communication-hub/throughput"
+	"lachain-communication-hub/utils"
+	"math/rand"
+	"sync"
+	"time"
+
 	"github.com/juju/loggo"
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/network"
@@ -13,13 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
-	"lachain-communication-hub/communication"
-	"lachain-communication-hub/config"
-	"lachain-communication-hub/throughput"
-	"lachain-communication-hub/utils"
-	"math/rand"
-	"sync"
-	"time"
 )
 
 var log = loggo.GetLogger("connection")
@@ -47,8 +48,8 @@ var (
 		Help: "The total number of messages dropped",
 	})
 	resendAttempts = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name: "lachain_hub_resend_attempts",
-		Help: "The total number of messages dropped",
+		Name:    "lachain_hub_resend_attempts",
+		Help:    "The total number of messages dropped",
 		Buckets: []float64{1, 2, 3, 4, 5},
 	})
 	inboundMessages = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -383,14 +384,14 @@ func (connection *Connection) sendPeers() {
 		err := communication.Write(connection.outboundStream, frame)
 		connection.streamLock.Unlock()
 		if err != nil {
-			log.Errorf("Cannot send peer list (len = %d bytes) to peer %v: %v", len(msg), connection.PeerId.Pretty(), err)
+			log.Warningf("Cannot send peer list (len = %d bytes) to peer %v: %v", len(msg), connection.PeerId.Pretty(), err)
 		} else {
 			log.Tracef("Sent peer list (len = %d bytes) to peer %v", len(msg), connection.PeerId.Pretty())
 			connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
 		}
 		return
 	}
-	log.Errorf("Cannot send peer list to peer %v: no connection yet", connection.PeerId.Pretty())
+	log.Warningf("Cannot send peer list to peer %v: no connection yet", connection.PeerId.Pretty())
 }
 
 func (connection *Connection) handlePeers(data []byte) {
