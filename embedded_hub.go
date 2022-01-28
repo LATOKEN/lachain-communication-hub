@@ -27,7 +27,7 @@ import (
 
 var localPeer *peer_service.PeerService
 
-// var log = loggo.GetLogger("embedded_hub")
+var log = loggo.GetLogger("embedded_hub")
 var ZeroPub = make([]byte, 33)
 
 var messages = goconcurrentqueue.NewFIFO()
