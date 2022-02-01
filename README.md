@@ -3,44 +3,37 @@
 LibP2P based solution for P2P communication of LACHAIN nodes
 
 
-#### Build
+## Build
 
-Gen protobuf files
-
-``` 
-cd cmd/protoc-gen-go-grpc && go install . && cd -
-protoc   --go_out=Mgrpc/service_config/service_config.proto=/internal/proto/grpc_service_config:.   --go-grpc_out=Mgrpc/service_config/service_config.proto=/internal/proto/grpc_service_config:.   --go_opt=paths=source_relative   --go-grpc_opt=paths=source_relative   grpc/protobuf/message.proto
-```
-
-
-
-
-Build project
-```
-    go build -o hub main.go
-```
-
-Build shared library to use in other apps
-```
-    go build -o libhub.so embedded_hub.go
-```
-
-#### Run
-
-Relay-node
+#### Native go libraries
+Linux:
 
 ```
-    ./hub -relay
+go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
 ```
 
-
-Peer
+Windows:
 
 ```
-    ./hub
+go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
 ```
 
-Peer on custom port
+MacOS:
+
 ```
-    ./hub -port :50002
+go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
+```
+
+#### Lachain.CommunicationHub.Native
+All go libraries from all 3 platforms should be present in lib folder as shown in previous step
+
+```
+nuget pack Lachain.CommunicationHub.Native.nuspec
+```
+
+#### Lachain.CommunicationHub.Net
+```
+cd Lachain.CommunicationHub.Net/
+dotnet build Lachain.CommunicationHub.Net.sln
+nuget pack Lachain.CommunicationHub.Net.csproj
 ```
