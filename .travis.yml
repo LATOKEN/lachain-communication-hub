@@ -40,8 +40,8 @@ jobs:
           - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
           - DOTNET_CLI_TELEMETRY_OPTOUT=1      
       install:
-        - dotnet restore
-        - dotnet build -c Release
+        - dotnet restore Lachain.CommunicationHub.Net
+        - dotnet build -c Release Lachain.CommunicationHub.Net
       script:
         - cd Lachain.CommunicationHub.Net/
         - dotnet build Lachain.CommunicationHub.Net.sln
