@@ -29,6 +29,8 @@ jobs:
     
     - language: csharp
       dotnet: 5.0
+      mono: none
+      dist: focal
       addons:
         apt:
           packages:
@@ -36,6 +38,12 @@ jobs:
       install:
         - dotnet restore
         - dotnet build -c Release
+      script:
+        - cd Lachain.CommunicationHub.Net/
+        - dotnet build Lachain.CommunicationHub.Net.sln
+        - nuget pack Lachain.CommunicationHub.Net.csproj
+
+
 
 
 
