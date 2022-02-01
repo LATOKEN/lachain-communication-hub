@@ -23,7 +23,7 @@ All go libraries from all 3 platforms should be present in lib folder as shown i
 
 `nuget pack Lachain.CommunicationHub.Native.nuspec`
 
-Lachain.CommunicationHub.Net
+#### Lachain.CommunicationHub.Net
 ```
 cd Lachain.CommunicationHub.Net/
 dotnet build Lachain.CommunicationHub.Net.sln
