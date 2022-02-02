@@ -43,6 +43,7 @@ jobs:
         - dotnet restore Lachain.CommunicationHub.Net
         - dotnet build -c Release Lachain.CommunicationHub.Net
       script:
+        - nuget pack Lachain.CommunicationHub.Native.nuspec
         - cd Lachain.CommunicationHub.Net/
         - dotnet build Lachain.CommunicationHub.Net.sln
         - dotnet pack Lachain.CommunicationHub.Net.csproj
