@@ -2,11 +2,13 @@ jobs:
   include:
     - language: csharp
       dotnet: 5.0
+      mono: none
       dist: focal
       addons:
         apt:
           packages:
             - dotnet-sdk-3.1
+            - nuget
       env:
         global:
           - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
