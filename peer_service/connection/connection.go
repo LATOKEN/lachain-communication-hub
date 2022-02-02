@@ -252,7 +252,7 @@ func (connection *Connection) sendMessageCycle() {
 			if err == nil {
 				resendAttempts.Observe(float64(attempts))
 				attempts = 0
-				log.Tracef("Sent message (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
+				//log.Tracef("Sent message (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
 				connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
 				sendBackoff = time.Millisecond
 				msgToSend = nil

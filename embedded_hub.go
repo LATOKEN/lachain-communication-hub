@@ -106,7 +106,7 @@ func GetMessages(buffer unsafe.Pointer, maxLength C.int) C.int {
 		ptr += l + 4
 		c += 1
 	}
-	log.Tracef("GetMessages sending overall %d messages, %d bytes", c, ptr)
+	//log.Tracef("GetMessages sending overall %d messages, %d bytes", c, ptr)
 	return C.int(c)
 }
 
@@ -138,7 +138,7 @@ func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Point
 	defer mutex.Unlock()
 	pubKey := C.GoBytes(pubKeyPtr, pubKeyLen)
 	data := C.GoBytes(dataPtr, dataLen)
-	log.Tracef("SendMessage command to send %d bytes to %s", dataLen, hex.EncodeToString(pubKey))
+	//log.Tracef("SendMessage command to send %d bytes to %s", dataLen, hex.EncodeToString(pubKey))
 
 	if bytes.Equal(pubKey, ZeroPub) {
 		localPeer.BroadcastMessage(data)
