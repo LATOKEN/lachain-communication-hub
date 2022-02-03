@@ -1,27 +1,24 @@
-
-before_install:
-  - pip install awscli
-  - aws s3 sync s3://travis-build-stages-shared-storage-test/$TRAVIS_BUILD_NUMBER ~/$TRAVIS_BUILD_NUMBER
-
 jobs:
   include:
     - language: go
-      go: 1.17.3
       os:
-      - linux
-      - osx
-      - windows
+        - linux
+        - osx
+        - windows
+
+      go: 
+        - 1.17.3
 
       script:
-      - go get -d -v ./...
-      - |
-        if [ $TRAVIS_OS_NAME == "linux" ]; then
-          go build -o libhub_${TRAVIS_OS_NAME}.so -buildmode=c-shared embedded_hub.go
-        elif [ $TRAVIS_OS_NAME == "osx" ]; then
-          go build -o libhub_${TRAVIS_OS_NAME}.dylib -buildmode=c-shared embedded_hub.go
-        elif [ $TRAVIS_OS_NAME == "windows" ]; then
-          go build -o libhub_${TRAVIS_OS_NAME}.dll -buildmode=c-shared embedded_hub.go
-        fi
+        - go get -d -v ./...
+        - |
+          if [ $TRAVIS_OS_NAME == "linux" ]; then
+            go build -o libhub_${TRAVIS_OS_NAME}.so -buildmode=c-shared embedded_hub.go
+          elif [ $TRAVIS_OS_NAME == "osx" ]; then
+            go build -o libhub_${TRAVIS_OS_NAME}.dylib -buildmode=c-shared embedded_hub.go
+          elif [ $TRAVIS_OS_NAME == "windows" ]; then
+            go build -o libhub_${TRAVIS_OS_NAME}.dll -buildmode=c-shared embedded_hub.go
+          fi
       deploy:
         provider: releases
         api_key:
