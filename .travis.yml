@@ -23,7 +23,7 @@ jobs:
         - go build -o libhub_${TRAVIS_OS_NAME}.dylib -buildmode=c-shared embedded_hub.go
     
     - stage: Build
-      os: 
+      os: windows
       workspaces:
         create:
           name: windows-binaries
@@ -39,10 +39,11 @@ jobs:
         provider: releases
         api_key: "$GITHUB_TOKEN"
         file_glob: true
-        file: libhub_${TRAVIS_OS_NAME}.*
+        file: libhub_.*
         skip_cleanup: true
         on:
           tags: true
+          all_branches: true
     
     - language: csharp
       dotnet: 5.0
