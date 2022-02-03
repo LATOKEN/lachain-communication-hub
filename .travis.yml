@@ -1,33 +1,43 @@
 jobs:
   include:
-    - stage: build
+    - stage: Build
       os: linux
+      workspaces:
+        create:
+          name: linux-binaries
       language: go
       go: 1.17.3
       script:
         - go get -d -v ./...
         - go build -o libhub_${TRAVIS_OS_NAME}.so -buildmode=c-shared embedded_hub.go
 
-    - stage: build
+    - stage: Build
       os: osx
+      workspaces:
+        create:
+          name: osx-binaries
       language: go
       go: 1.17.3
       script:
         - go get -d -v ./...
         - go build -o libhub_${TRAVIS_OS_NAME}.dylib -buildmode=c-shared embedded_hub.go
     
-    - stage: build
-      os: windows
+    - stage: Build
+      os: 
+      workspaces:
+        create:
+          name: windows-binaries
       language: go
       go: 1.17.3
       script:
         - go get -d -v ./...
         - go build -o libhub_${TRAVIS_OS_NAME}.dll -buildmode=c-shared embedded_hub.go
-      
+
+    - stage: Deploy  
+      language: minimal 
       deploy:
         provider: releases
-        api_key:
-          secure: "DVFbA0GJkJrkLyOTaKPm+zFVnCJFsUSGaC31wtOQTQnlnuTjGZKVHNP+17DYKCUOh6t+vyd0JJIc0D0ujF8CyNbGuBkQe40C9ih4rRS6wjobTSfgfglE9CQ36SFerQV2XNWhEGj2HnqA37HPQ8BxQwbp1OwtTwZ9kaeess8d9JUVsw3YcVPPEevsNHIzKo+rE3lckLLSKv15TtF9wUhBwpgse+MK49ISqCi6ahRRlK8QYgXCzwxaXvmWh3SYIc00HgeXb+1Jfsp6w/8JOEqTlJ4SbXOZN/Jj8uhAGq8FkJC8YhtEs0Irbepaf6NblNgq/O8YDlQ8U1yiU7AgTvlEx5DVaRy3ZR54NfAcHpiXq9LO9XdarmvtrEZ3q/uDPGGMYZhK6RLQSBWfptld5cwJc6GWLyGVx2cPZvTGYOHNhks6q3Mgvpru1h65blqgJz3fNv8C5aqDcYdBCe/UhqEsE+YYHxQY5tgIP8vO3Zb3IFgMEh0BlKvv/MfY7mOOCQx7gOQBk5SQvamfnbi+oSr1xIJJEZN8nqSgnfuKNABc0o6syoqG5OwlHoLQ/mC6dq0+j4iwGhbAWus4nyM29Bp0XLCgUrxuaLNoDejbSnAG3Bx/8gdwC+dtjzMjRfwmr0tzLbgmqZaBpAgfyvLctJUTub+bzpDNpdniL3ByJOWH8xE="
+        api_key: "$GITHUB_TOKEN"
         file_glob: true
         file: libhub_${TRAVIS_OS_NAME}.*
         skip_cleanup: true
