@@ -49,6 +49,11 @@ jobs:
           all_branches: true
     
     - language: csharp
+      workspaces: 
+        use:
+          - linux-binaries
+          - osx-binaries
+          - windows-binaries
       dotnet: 5.0
       mono: none
       dist: focal
@@ -69,15 +74,18 @@ jobs:
         - cd Lachain.CommunicationHub.Net/
         - dotnet build Lachain.CommunicationHub.Net.sln
         - dotnet pack Lachain.CommunicationHub.Net.csproj
-      deploy:
-        provider: releases
-        api_key: "$GITHUB_TOKEN"
-        file_glob: true
-        file: bin/*
-        skip_cleanup: true
-        draft: true
-        on:
-          tags: true
+    
+      - stage: Deploy
+        language: minimal 
+        deploy:
+          provider: releases
+          api_key: "$GITHUB_TOKEN"
+          file_glob: true
+          file: bin/*
+          skip_cleanup: true
+          draft: true
+          on:
+            tags: true
 
 
 
