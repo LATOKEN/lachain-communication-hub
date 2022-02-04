@@ -5,115 +5,126 @@ jobs:
       workspaces:
         create:
           name: linux-binaries
-          paths: bin_linux
-      language: go
-      go: 1.17.3
+          paths: .
+      
       script:
-        - go get -d -v ./...
-        - go build -o libhub_${TRAVIS_OS_NAME}.so -buildmode=c-shared embedded_hub.go
+        - touch libhub.so
+      # language: go
+      # go: 1.17.3
+      # script:
+      #   - go get -d -v ./...
+      #   - go build -o libhub_${TRAVIS_OS_NAME}.so -buildmode=c-shared embedded_hub.go
+
+
 
     - stage: Build
       os: osx
       workspaces:
         create:
           name: osx-binaries
-          paths: bin_osx
-      language: go
-      go: 1.17.3
+          paths: .
       script:
-        - go get -d -v ./...
-        - go build -o libhub_${TRAVIS_OS_NAME}.dylib -buildmode=c-shared embedded_hub.go
+        - touch libhub.dylib
+      # language: go
+      # go: 1.17.3
+      # script:
+      #   - go get -d -v ./...
+      #   - go build -o libhub_${TRAVIS_OS_NAME}.dylib -buildmode=c-shared embedded_hub.go
     
     - stage: Build
       os: windows
       workspaces:
         create:
           name: windows-binaries
-          paths: bin_windows
-      language: go
-      go: 1.17.3
+          paths: .
       script:
-        - go get -d -v ./...
-        - go build -o libhub_${TRAVIS_OS_NAME}.dll -buildmode=c-shared embedded_hub.go
+        - touch libhub.dll
+      # language: go
+      # go: 1.17.3
+      # script:
+      #   - go get -d -v ./...
+      #   - go build -o libhub_${TRAVIS_OS_NAME}.dll -buildmode=c-shared embedded_hub.go
 
-    - stage: Deploy  
-      language: minimal 
-      deploy:
-        provider: releases
-        api_key: "$GITHUB_TOKEN"
-        file_glob: true
-        file: libhub_.*
-        skip_cleanup: true
-        on:
-          tags: true
-          all_branches: true
+    # - stage: Deploy  
+    #   language: minimal 
+    #   deploy:
+    #     provider: releases
+    #     api_key: "$GITHUB_TOKEN"
+    #     file_glob: true
+    #     file: libhub_.*
+    #     skip_cleanup: true
+    #     on:
+    #       tags: true
+    #       all_branches: true
     
     - stage: Nuget_build
-      language: csharp
-      dotnet: 5.0
-      mono: none
-      dist: focal
-      addons:
-        apt:
-          packages:
-            - dotnet-sdk-3.1
-            - nuget
+      # language: csharp
+      # dotnet: 5.0
+      # mono: none
+      # dist: focal
+      # addons:
+      #   apt:
+      #     packages:
+      #       - dotnet-sdk-3.1
+      #       - nuget
       workspaces: 
         use:
           - linux-binaries
           - osx-binaries
           - windows-binaries
-      env:
-        global:
-          - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
-          - DOTNET_CLI_TELEMETRY_OPTOUT=1
-      install:
-        - dotnet restore Lachain.CommunicationHub.Net
-        - dotnet build -c Release Lachain.CommunicationHub.Net
       script:
         - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
-        - nuget pack Lachain.CommunicationHub.Native.nuspec
-        - cd Lachain.CommunicationHub.Net/
-        - dotnet build Lachain.CommunicationHub.Net.sln
-        - dotnet pack Lachain.CommunicationHub.Net.csproj
+      # env:
+      #   global:
+      #     - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
+      #     - DOTNET_CLI_TELEMETRY_OPTOUT=1
+      # install:
+      #   - dotnet restore Lachain.CommunicationHub.Net
+      #   - dotnet build -c Release Lachain.CommunicationHub.Net
+      # script:
+      #   - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
+      #   - nuget pack Lachain.CommunicationHub.Native.nuspec
+      #   - cd Lachain.CommunicationHub.Net/
+      #   - dotnet build Lachain.CommunicationHub.Net.sln
+      #   - dotnet pack Lachain.CommunicationHub.Net.csproj
 
-      deploy:
-        provider: releases
-        api_key: "$GITHUB_TOKEN"
-        file_glob: true
-        file: bin/*
-        skip_cleanup: true
-        draft: true
-        on:
-          tags: true
+    #   deploy:
+    #     provider: releases
+    #     api_key: "$GITHUB_TOKEN"
+    #     file_glob: true
+    #     file: bin/*
+    #     skip_cleanup: true
+    #     draft: true
+    #     on:
+    #       tags: true
 
-    - stage: Dotnet_build 
-      language: csharp
-      dotnet: 5.0
-      mono: none
-      dist: focal
-      addons:
-        apt:
-          packages:
-            - dotnet-sdk-3.1
-            - nuget
-      env:
-        global:
-          - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
-          - DOTNET_CLI_TELEMETRY_OPTOUT=1      
-      install:
-        - dotnet restore Lachain.CommunicationHub.Net
-        - dotnet build -c Release Lachain.CommunicationHub.Net
-      script:
-        - cd Lachain.CommunicationHub.Net/
-        - dotnet build Lachain.CommunicationHub.Net.sln
-        - dotnet pack Lachain.CommunicationHub.Net.csproj
-      deploy:
-        provider: releases
-        api_key: "$GITHUB_TOKEN"
-        file_glob: true
-        file: bin/*
-        skip_cleanup: true
-        draft: true
-        on:
-          tags: true
+    # - stage: Dotnet_build 
+    #   language: csharp
+    #   dotnet: 5.0
+    #   mono: none
+    #   dist: focal
+    #   addons:
+    #     apt:
+    #       packages:
+    #         - dotnet-sdk-3.1
+    #         - nuget
+    #   env:
+    #     global:
+    #       - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
+    #       - DOTNET_CLI_TELEMETRY_OPTOUT=1      
+    #   install:
+    #     - dotnet restore Lachain.CommunicationHub.Net
+    #     - dotnet build -c Release Lachain.CommunicationHub.Net
+    #   script:
+    #     - cd Lachain.CommunicationHub.Net/
+    #     - dotnet build Lachain.CommunicationHub.Net.sln
+    #     - dotnet pack Lachain.CommunicationHub.Net.csproj
+    #   deploy:
+    #     provider: releases
+    #     api_key: "$GITHUB_TOKEN"
+    #     file_glob: true
+    #     file: bin/*
+    #     skip_cleanup: true
+    #     draft: true
+    #     on:
+    #       tags: true
