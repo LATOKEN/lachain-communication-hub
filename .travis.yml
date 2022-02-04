@@ -16,8 +16,7 @@ jobs:
     - stage: Build
       os: osx
       workspaces:
-        use:
-          name: bin_ws
+        use: bin_ws
       language: go
       go: 1.17.3
       script:
@@ -27,8 +26,7 @@ jobs:
     - stage: Build
       os: windows
       workspaces:
-        use:
-          name: bin_ws
+        use: bin_ws
       language: go
       go: 1.17.3
       script:
@@ -58,8 +56,7 @@ jobs:
             - dotnet-sdk-3.1
             - nuget
       workspaces: 
-        use:
-          - bin_ws
+        use: bin_ws
       env:
         global:
           - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
