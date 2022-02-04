@@ -2,9 +2,6 @@ jobs:
   include:
     - stage: Build
       os: linux
-      workspaces:
-        create:
-          name: bin_ws1
       language: go
       go: 1.17.3
       script:
@@ -12,12 +9,14 @@ jobs:
         # - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
         - touch ls.txt
         - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
+      workspaces:
+        create:
+          name: bin_ws1
+          paths:
+            - ls.txt
 
     - stage: Build
       os: osx
-      workspaces:
-        create:
-          name: bin_ws2
       language: go
       go: 1.17.3
       script:
@@ -25,6 +24,11 @@ jobs:
         # - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
         - touch ws.txt
         - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
+      workspaces:
+        create:
+          name: bin_ws2
+          paths:
+            - ws.txt
     - stage: check
       language: minimal
       workspaces:
@@ -35,7 +39,7 @@ jobs:
         clone: false
       script:
         - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
-      
+        - ls -R
     # - stage: Build
     #   os: windows
     #   workspaces:
