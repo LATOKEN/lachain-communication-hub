@@ -4,36 +4,48 @@ jobs:
       os: linux
       workspaces:
         create:
-          name: bin_ws
-          paths: .
+          name: bin_ws1
       language: go
       go: 1.17.3
       script:
-        - go get -d -v ./...
-        - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
+        # - go get -d -v ./...
+        # - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
+        - touch ls.txt
         - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
 
     - stage: Build
       os: osx
       workspaces:
-        use: bin_ws
+        create:
+          name: bin_ws2
       language: go
       go: 1.17.3
       script:
-        - go get -d -v ./...
-        - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
+        # - go get -d -v ./...
+        # - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
+        - touch ws.txt
         - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
-    
-    - stage: Build
-      os: windows
+    - stage: check
+      language: minimal
       workspaces:
-        use: bin_ws
-      language: go
-      go: 1.17.3
+        use:
+          - bin_ws1
+          - bin_ws2
+      git:
+        clone: false
       script:
-        - go get -d -v ./...
-        - go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
         - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
+      
+    # - stage: Build
+    #   os: windows
+    #   workspaces:
+    #     use: bin_ws
+    #   language: go
+    #   go: 1.17.3
+    #   script:
+    #     - go get -d -v ./...
+    #     - go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
+    #     - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
 
     # - stage: Deploy  
     #   language: minimal 
@@ -47,31 +59,31 @@ jobs:
     #       tags: true
     #       all_branches: true
     
-    - stage: Nuget_build
-      language: csharp
-      dotnet: 5.0
-      mono: none
-      dist: focal
-      addons:
-        apt:
-          packages:
-            - dotnet-sdk-3.1
-            - nuget
-      workspaces: 
-        use: bin_ws
-      env:
-        global:
-          - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
-          - DOTNET_CLI_TELEMETRY_OPTOUT=1
-      install:
-        - dotnet restore Lachain.CommunicationHub.Net
-        - dotnet build -c Release Lachain.CommunicationHub.Net
-      script:
-        - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
-        - nuget pack Lachain.CommunicationHub.Native.nuspec
-        - cd Lachain.CommunicationHub.Net/
-        - dotnet build Lachain.CommunicationHub.Net.sln
-        - dotnet pack Lachain.CommunicationHub.Net.csproj
+    # - stage: Nuget_build
+    #   language: csharp
+    #   dotnet: 5.0
+    #   mono: none
+    #   dist: focal
+    #   addons:
+    #     apt:
+    #       packages:
+    #         - dotnet-sdk-3.1
+    #         - nuget
+    #   workspaces: 
+    #     use: bin_ws
+    #   env:
+    #     global:
+    #       - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
+    #       - DOTNET_CLI_TELEMETRY_OPTOUT=1
+    #   install:
+    #     - dotnet restore Lachain.CommunicationHub.Net
+    #     - dotnet build -c Release Lachain.CommunicationHub.Net
+    #   script:
+    #     - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
+    #     - nuget pack Lachain.CommunicationHub.Native.nuspec
+    #     - cd Lachain.CommunicationHub.Net/
+    #     - dotnet build Lachain.CommunicationHub.Net.sln
+    #     - dotnet pack Lachain.CommunicationHub.Net.csproj
 
     #   deploy:
     #     provider: releases
