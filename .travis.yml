@@ -48,7 +48,8 @@ jobs:
           tags: true
           all_branches: true
     
-    - language: csharp
+    - stage: Dotnet_Build
+      language: csharp
       workspaces: 
         use:
           - linux-binaries
