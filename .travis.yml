@@ -6,12 +6,12 @@ jobs:
         create:
           name: bin_ws
           paths: .
-
       language: go
       go: 1.17.3
       script:
         - go get -d -v ./...
         - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
+        - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
 
     - stage: Build
       os: osx
@@ -22,6 +22,7 @@ jobs:
       script:
         - go get -d -v ./...
         - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
+        - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
     
     - stage: Build
       os: windows
@@ -32,6 +33,7 @@ jobs:
       script:
         - go get -d -v ./...
         - go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
+        - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
 
     # - stage: Deploy  
     #   language: minimal 
