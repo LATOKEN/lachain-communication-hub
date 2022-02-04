@@ -2,8 +2,7 @@ jobs:
   include:
     - stage: Build
       os: linux
-      language: go
-      go: 1.17.3
+      language: minimal
       script:
         # - go get -d -v ./...
         # - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
@@ -17,8 +16,8 @@ jobs:
 
     - stage: Build
       os: osx
-      language: go
-      go: 1.17.3
+      language: minimal
+      # go: 1.17.3
       script:
         # - go get -d -v ./...
         # - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
