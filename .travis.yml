@@ -77,7 +77,10 @@ jobs:
         - dotnet build -c Release Lachain.CommunicationHub.Net
       script:
         - tar -xvf ${TRAVIS_HOME}/.casher/bin_osx-fetch.tgz
-        - mv C:/Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib .
+        - find . -type f
+        - mv Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/osx-x64 lib 
+        - mv C:/Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/win-x64 lib
+        - mv lib/win-x64/libhub.dll lib/win-x64/hub.dll
         - nuget pack Lachain.CommunicationHub.Native.nuspec
         - cd Lachain.CommunicationHub.Net/
         - dotnet build Lachain.CommunicationHub.Net.sln
