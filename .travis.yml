@@ -1,124 +1,31 @@
-sudo: required
+# This configuration uses S3 as shared storage between different
+# build stages.
+
+# It assums S3 credentials to be set up in the repository settings
+# or to be configured as encrypted env vars here.
+
+sudo: false
+
+env:
+  global:
+    # include $HOME/.local/bin for `aws`
+    - PATH=$HOME/.local/bin:$PATH
+
+before_install:
+  # set up awscli packages
+  - pip install --user awscli
+  - mkdir -p ~/shared
+  - aws s3 sync s3://travis-build-stages-shared-storage-test/shared ~/shared
 
 jobs:
   include:
-    - stage: Build
-      os: linux
-      language: go
-      go: 1.17.3
+    - stage: setup files
+      script: echo one | tee > ~/shared/one
+    - stage: setup files
+      script: echo two | tee > ~/shared/two
+    - stage: use shared files 
       script:
-        - go get -d -v ./...
-        - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
-      workspaces:
-        create:
-          name: bin_linux
-          paths: 
-            - lib/linux-x64
+        - cat ~/shared/*
 
-    - stage: Build
-      os: osx
-      language: go
-      go: 1.17.3
-      script:
-        - go get -d -v ./...
-        - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
-      workspaces:
-        create:
-          name: bin_osx
-          paths: 
-            - lib/osx-x64
-    
-    - stage: Build
-      os: windows
-      language: go
-      go: 1.17.3
-      script:
-        - go get -d -v ./...
-        - go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
-        - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
-      workspaces:
-        create:
-          name: bin_win
-          paths: 
-            - lib/win-x64
-    # - stage: Deploy  
-    #   language: minimal 
-    #   deploy:
-    #     provider: releases
-    #     api_key: "$GITHUB_TOKEN"
-    #     file_glob: true
-    #     file: libhub_.*
-    #     skip_cleanup: true
-    #     on:
-    #       tags: true
-    #       all_branches: true
-    
-    - stage: Nuget_build
-      language: csharp
-      dotnet: 5.0
-      mono: none
-      dist: focal
-      addons:
-        apt:
-          packages:
-            - dotnet-sdk-3.1
-            - nuget
-      workspaces: 
-        use:
-          - bin_linux
-          - bin_osx
-          - bin_win
-      env:
-        global:
-          - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
-          - DOTNET_CLI_TELEMETRY_OPTOUT=1
-      install:
-        - dotnet restore Lachain.CommunicationHub.Net
-        - dotnet build -c Release Lachain.CommunicationHub.Net
-      script:
-        - ls -R | grep ":$" | sed -e 's/:$//' -e 's/[^-][^\/]*\//--/g' -e 's/^/   /' -e 's/-/|/'
-        - nuget pack Lachain.CommunicationHub.Native.nuspec
-        - cd Lachain.CommunicationHub.Net/
-        - dotnet build Lachain.CommunicationHub.Net.sln
-        - dotnet pack Lachain.CommunicationHub.Net.csproj
-
-    #   deploy:
-    #     provider: releases
-    #     api_key: "$GITHUB_TOKEN"
-    #     file_glob: true
-    #     file: bin/*
-    #     skip_cleanup: true
-    #     draft: true
-    #     on:
-    #       tags: true
-
-    # - stage: Dotnet_build 
-    #   language: csharp
-    #   dotnet: 5.0
-    #   mono: none
-    #   dist: focal
-    #   addons:
-    #     apt:
-    #       packages:
-    #         - dotnet-sdk-3.1
-    #         - nuget
-    #   env:
-    #     global:
-    #       - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
-    #       - DOTNET_CLI_TELEMETRY_OPTOUT=1      
-    #   install:
-    #     - dotnet restore Lachain.CommunicationHub.Net
-    #     - dotnet build -c Release Lachain.CommunicationHub.Net
-    #   script:
-    #     - cd Lachain.CommunicationHub.Net/
-    #     - dotnet build Lachain.CommunicationHub.Net.sln
-    #     - dotnet pack Lachain.CommunicationHub.Net.csproj
-    #   deploy:
-    #     provider: releases
-    #     api_key: "$GITHUB_TOKEN"
-    #     file_glob: true
-    #     file: bin/*
-    #     skip_cleanup: true
-    #     draft: true
-    #     on:
-    #       tags: true
+after_success:
+  - aws s3 sync ~/shared s3://travis-build-stages-shared-storage-test/shared
