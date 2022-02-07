@@ -9,13 +9,15 @@ sudo: false
 env:
   global:
     # include $HOME/.local/bin for `aws`
-    - PATH=$HOME/.local/bin:$PATH
+    - AWS_ACCESS_KEY_ID=AKIAXO3CMFTOMQF7SWEE
+    - AWS_SECRET_ACCESS_KEY=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
+    - AWS_DEFAULT_REGION=us-east-2
 
 before_install:
   # set up awscli packages
   - pip install --user awscli
   - mkdir -p ~/shared
-  - aws s3 sync s3://travis-build-stages-shared-storage-test/shared ~/shared
+  - aws s3 sync s3:///shared ~/shared
 
 jobs:
   include:
