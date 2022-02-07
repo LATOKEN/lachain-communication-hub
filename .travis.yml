@@ -10,7 +10,7 @@ before_install:
   # set up awscli packages
   - pip3 install --user awscli
   - mkdir -p ~/shared/lib
-  - aws s3 sync s3://latoken/shared/lib ~/shared/lib
+  - python3 -m aws s3 sync s3://latoken/shared/lib ~/shared/lib
 
 jobs:
   include:
