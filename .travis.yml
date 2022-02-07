@@ -122,5 +122,5 @@ jobs:
     #     on:
     #       tags: true
 
- after_success:
+after_success:
   - aws s3 sync ~/shared s3://latoken/shared
