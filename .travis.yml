@@ -8,20 +8,20 @@ env:
 
 before_install:
   # set up awscli packages
-  - pip install --user awscli
+  - pip3 install --user awscli
   - mkdir -p ~/shared/lib
   - aws s3 sync s3://latoken/shared/lib ~/shared/lib
 
 jobs:
   include:
-    - stage: Build
-      os: linux
-      language: go
-      go: 1.17.3
-      script:
-        - go get -d -v ./...
-        - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
-        - cp -r lib/linux-x64 ~/shared/lib
+    # - stage: Build
+    #   os: linux
+    #   language: go
+    #   go: 1.17.3
+    #   script:
+    #     - go get -d -v ./...
+    #     - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
+    #     - cp -r lib/linux-x64 ~/shared/lib
 
     - stage: Build
       os: osx
