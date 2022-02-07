@@ -1,49 +1,38 @@
 sudo: false
 
-env:
-  global:
-    - AWS_ACCESS_KEY_ID=AKIAXO3CMFTOMQF7SWEE
-    - AWS_SECRET_ACCESS_KEY=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
-    - AWS_DEFAULT_REGION=us-east-2
-
-before_install:
-  # set up awscli packages
-  - pip3 install --user awscli
-  - mkdir -p ~/shared/lib
-  - python3 -m aws s3 sync s3://latoken/shared/lib ~/shared/lib
-
 jobs:
   include:
-    # - stage: Build
-    #   os: linux
-    #   language: go
-    #   go: 1.17.3
-    #   script:
-    #     - go get -d -v ./...
-    #     - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
-    #     - cp -r lib/linux-x64 ~/shared/lib
+    - stage: Build
+      os: linux
+      language: go
+      go: 1.17.3
+      script:
+        - go get -d -v ./...
+        - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
+        - zip -r linux-x64.zip lib/linux-x64
+        - curl -T linux-x64.zip temp.sh
 
     - stage: Build
       os: osx
       language: 
         - go
-        - python
       go: 1.17.3
       script:
         - go get -d -v ./...
         - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
-        - cp -r lib/osx-x64 ~/shared/lib
+        - zip -r osx-x64.zip lib/osx-x64
+        - curl -T osx-x64.zip temp.sh
     
     - stage: Build
       os: windows
       language: 
         - go
-        - python
       go: 1.17.3
       script:
         - go get -d -v ./...
         - go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
-        - cp -r lib/win-x64 ~/shared/lib
+        - zip -r win-x64.zip lib/win-x64
+        - curl -T win-x64.zip temp.sh
 
     # - stage: Deploy  
     #   language: minimal 
