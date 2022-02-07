@@ -17,7 +17,7 @@ before_install:
   # set up awscli packages
   - pip install --user awscli
   - mkdir -p ~/shared
-  - aws s3 sync s3:///shared ~/shared
+  - aws s3 sync s3://latoken/shared ~/shared
 
 jobs:
   include:
@@ -30,4 +30,4 @@ jobs:
         - cat ~/shared/*
 
 after_success:
-  - aws s3 sync ~/shared s3://travis-build-stages-shared-storage-test/shared
+  - aws s3 sync ~/shared s3://latoken/shared
