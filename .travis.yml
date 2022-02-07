@@ -2,26 +2,26 @@ sudo: false
 
 jobs:
   include:
-    - stage: Build
-      os: linux
-      language: go
-      go: 1.17.3
-      script:
-        - go get -d -v ./...
-        - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
-        - zip -r linux-x64.zip lib/linux-x64
-        - curl -T linux-x64.zip temp.sh
+    # - stage: Build
+    #   os: linux
+    #   language: go
+    #   go: 1.17.3
+    #   script:
+    #     - go get -d -v ./...
+    #     - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
+    #     - zip -r linux-x64.zip lib/linux-x64
+    #     - curl -T linux-x64.zip temp.sh
 
-    - stage: Build
-      os: osx
-      language: 
-        - go
-      go: 1.17.3
-      script:
-        - go get -d -v ./...
-        - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
-        - zip -r osx-x64.zip lib/osx-x64
-        - curl -T osx-x64.zip temp.sh
+    # - stage: Build
+    #   os: osx
+    #   language: 
+    #     - go
+    #   go: 1.17.3
+    #   script:
+    #     - go get -d -v ./...
+    #     - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
+    #     - zip -r osx-x64.zip lib/osx-x64
+    #     - curl -T osx-x64.zip temp.sh
     
     - stage: Build
       os: windows
@@ -31,7 +31,7 @@ jobs:
       script:
         - go get -d -v ./...
         - go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
-        - zip -r win-x64.zip lib/win-x64
+        - tar -a -c -f win-x64.zip lib/win-x64
         - curl -T win-x64.zip temp.sh
 
     # - stage: Deploy  
