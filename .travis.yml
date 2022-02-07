@@ -25,7 +25,9 @@ jobs:
 
     - stage: Build
       os: osx
-      language: go
+      language: 
+        - go
+        - python
       go: 1.17.3
       script:
         - go get -d -v ./...
@@ -34,7 +36,9 @@ jobs:
     
     - stage: Build
       os: windows
-      language: go
+      language: 
+        - go
+        - python
       go: 1.17.3
       script:
         - go get -d -v ./...
