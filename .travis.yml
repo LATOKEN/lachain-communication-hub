@@ -2,77 +2,77 @@ sudo: required
 
 jobs:
   include:
-    - stage: Build
-      os: linux
-      language: go
-      go: 1.17.3
-      script:
-        - go get -d -v ./...
-        - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
-      workspaces:
-        create:
-          name: bin_linux
-          paths: 
-            - lib/linux-x64
+    # - stage: Build
+    #   os: linux
+    #   language: go
+    #   go: 1.17.3
+    #   script:
+    #     - go get -d -v ./...
+    #     - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
+    #   workspaces:
+    #     create:
+    #       name: bin_linux
+    #       paths: 
+    #         - lib/linux-x64
 
-    - stage: Build
-      os: osx
-      language: go
-      go: 1.17.3
-      script:
-        - go get -d -v ./...
-        - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
-      workspaces:
-        create:
-          name: bin_osx
-          paths: 
-            - lib/osx-x64
+    # - stage: Build
+    #   os: osx
+    #   language: go
+    #   go: 1.17.3
+    #   script:
+    #     - go get -d -v ./...
+    #     - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
+    #   workspaces:
+    #     create:
+    #       name: bin_osx
+    #       paths: 
+    #         - lib/osx-x64
     
-    - stage: Build
-      os: windows
-      language: go
-      go: 1.17.3
-      script:
-        - go get -d -v ./...
-        - go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
-      workspaces:
-        create:
-          name: bin_win
-          paths: 
-            - lib/win-x64
+    # - stage: Build
+    #   os: windows
+    #   language: go
+    #   go: 1.17.3
+    #   script:
+    #     - go get -d -v ./...
+    #     - go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
+    #   workspaces:
+    #     create:
+    #       name: bin_win
+    #       paths: 
+    #         - lib/win-x64
 
     - stage: Nuget_build
       language: csharp
       dotnet: 5.0
       mono: none
       dist: focal
-      addons:
-        apt:
-          packages:
-            - dotnet-sdk-3.1
-            - nuget
-      workspaces: 
-        use:
-          - bin_linux
-          - bin_osx
-          - bin_win
-      env:
-        global:
-          - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
-          - DOTNET_CLI_TELEMETRY_OPTOUT=1
-      install:
-        - dotnet restore Lachain.CommunicationHub.Net
-        - dotnet build -c Release Lachain.CommunicationHub.Net
-      script:
-        - tar -xvf ${TRAVIS_HOME}/.casher/bin_osx-fetch.tgz
-        - mv Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib .
-        - mv C:/Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/win-x64 lib
-        - mv lib/win-x64/libhub.dll lib/win-x64/hub.dll
-        - mv /home/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/linux-x64 lib
-        - nuget pack Lachain.CommunicationHub.Native.nuspec
-        - cd Lachain.CommunicationHub.Net/
-        - dotnet build Lachain.CommunicationHub.Net.sln
-        - dotnet pack Lachain.CommunicationHub.Net.csproj
+      # addons:
+      #   apt:
+      #     packages:
+      #       - dotnet-sdk-3.1
+      #       - nuget
+      # workspaces: 
+      #   use:
+      #     - bin_linux
+      #     - bin_osx
+      #     - bin_win
+      # env:
+      #   global:
+      #     - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
+      #     - DOTNET_CLI_TELEMETRY_OPTOUT=1
+      # install:
+      #   - dotnet restore Lachain.CommunicationHub.Net
+      #   - dotnet build -c Release Lachain.CommunicationHub.Net
+      # script:
+        # - tar -xvf ${TRAVIS_HOME}/.casher/bin_osx-fetch.tgz
+        # - mv Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib .
+        # - mv C:/Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/win-x64 lib
+        # - mv lib/win-x64/libhub.dll lib/win-x64/hub.dll
+        # - mv /home/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/linux-x64 lib
+        # - nuget pack Lachain.CommunicationHub.Native.nuspec
+        # - cd Lachain.CommunicationHub.Net/
+        # - dotnet build Lachain.CommunicationHub.Net.sln
+        # - dotnet pack Lachain.CommunicationHub.Net.csproj
 
       deploy:
         provider: releases
@@ -80,9 +80,8 @@ jobs:
           secure: zXE18pcs21/y5/BFdzMpYIxpNZE+mes+QmHkbiOoOS831rbChn6dJgnG29vsL5hQ2bDMKnxijD4amszE4RMVIogOzUDKv5d/8rSdnGlv8+Xb/YgCM1Mj329v45fO1n/P6nolhzxcTCic+7SJ7I1XU0r+uK729cUqlwMyHC4Mf+Zh3RMijoVsc5PPZIgUSDiziURGvNtfsJ9hv++Hko+WLYuJgbRycJzZecbX9Qopur0/GslO52+buDok1nk0BL8uNbwszgGwj4Psi/vLbuVk9i+PSCxJGwewC78jzQpP6zc3/gvXQOFq8GMQxVpOgpkyI27b1ao/Ol8JzXbGfq/Vi0z8JTXawY6kGc5YxLKRuxXSg5ZxrVgKU3MdQ5bBMmZl5K9ZsTa5v/BfcjXEhq9FxYxnXytDD0acxkusmnLzunGzYRJHm05TvLc1FX520arxnBnSkteS0I01PruWq7wG36n15s+y15pqaqZYlUkNMhnm5YsXt4v45KAKqWJf7/tSuvYfIbTgOQ1CMGY29RiIfsXKULf1qjNcBN32LADQweOG96j9ixKVcBBPO8bfkuXkQ5YX4/NcAZzzAk7cha+HPGiotQKLgfMKL00lwOiaTrYuOe9b7hvE4szXTbHedwFPQl2gUZu8eFYITDZQTAxGueCItnRGvwHQw4D1YLDMH+w=
         file_glob: true
         file: 
-          - Lachain.CommunicationHub.NativeLib*nupkg
-          - bin/Debug/Lachain.CommunicationHub.Net*.nupkg
+          - Lachain.CommunicationHub.Native.nuspec
         skip_cleanup: true
         draft: true
         on:
-          branch: travis_dotnet_F
+          branch: travis_dotnet_F_test
