@@ -73,7 +73,7 @@ jobs:
     - cd Lachain.CommunicationHub.Net/
     - dotnet build Lachain.CommunicationHub.Net.sln
     - dotnet pack Lachain.CommunicationHub.Net.csproj
-    - dotnet nuget push Lachain.CommunicationHub.Native.0.0.71.nupkg -k $NUGETKEY -s https://api.nuget.org/v3/index.json --timeout 600
+    - dotnet nuget push Lachain.CommunicationHub.Native.*.nupkg -k $NUGETKEY -s https://api.nuget.org/v3/index.json --timeout 600
     deploy:
       provider: releases
       api_key: "$GITHUB_TOKEN"
