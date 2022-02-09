@@ -63,7 +63,7 @@ jobs:
       # install:
       #   - dotnet restore Lachain.CommunicationHub.Net
       #   - dotnet build -c Release Lachain.CommunicationHub.Net
-      # script:
+      script:
         # - tar -xvf ${TRAVIS_HOME}/.casher/bin_osx-fetch.tgz
         # - mv Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib .
         # - mv C:/Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/win-x64 lib
@@ -73,6 +73,7 @@ jobs:
         # - cd Lachain.CommunicationHub.Net/
         # - dotnet build Lachain.CommunicationHub.Net.sln
         # - dotnet pack Lachain.CommunicationHub.Net.csproj
+        - ls
 
       deploy:
         provider: releases
