@@ -76,8 +76,7 @@ jobs:
 
       deploy:
         provider: releases
-        api_key:
-          secure: "$GITHUB_TOKEN"
+        api_key: "$GITHUB_TOKEN"
         file_glob: true
         file: 
           - Lachain.CommunicationHub.NativeLib*nupkg
