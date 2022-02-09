@@ -77,7 +77,7 @@ jobs:
       deploy:
         provider: releases
         api_key:
-          secure: zXE18pcs21/y5/BFdzMpYIxpNZE+mes+QmHkbiOoOS831rbChn6dJgnG29vsL5hQ2bDMKnxijD4amszE4RMVIogOzUDKv5d/8rSdnGlv8+Xb/YgCM1Mj329v45fO1n/P6nolhzxcTCic+7SJ7I1XU0r+uK729cUqlwMyHC4Mf+Zh3RMijoVsc5PPZIgUSDiziURGvNtfsJ9hv++Hko+WLYuJgbRycJzZecbX9Qopur0/GslO52+buDok1nk0BL8uNbwszgGwj4Psi/vLbuVk9i+PSCxJGwewC78jzQpP6zc3/gvXQOFq8GMQxVpOgpkyI27b1ao/Ol8JzXbGfq/Vi0z8JTXawY6kGc5YxLKRuxXSg5ZxrVgKU3MdQ5bBMmZl5K9ZsTa5v/BfcjXEhq9FxYxnXytDD0acxkusmnLzunGzYRJHm05TvLc1FX520arxnBnSkteS0I01PruWq7wG36n15s+y15pqaqZYlUkNMhnm5YsXt4v45KAKqWJf7/tSuvYfIbTgOQ1CMGY29RiIfsXKULf1qjNcBN32LADQweOG96j9ixKVcBBPO8bfkuXkQ5YX4/NcAZzzAk7cha+HPGiotQKLgfMKL00lwOiaTrYuOe9b7hvE4szXTbHedwFPQl2gUZu8eFYITDZQTAxGueCItnRGvwHQw4D1YLDMH+w=
+          secure: "$GITHUB_TOKEN"
         file_glob: true
         file: 
           - Lachain.CommunicationHub.NativeLib*nupkg
