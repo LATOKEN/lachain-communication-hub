@@ -56,7 +56,6 @@ jobs:
       global:
       - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
       - DOTNET_CLI_TELEMETRY_OPTOUT=1
-      - secure: 3ffEl1n4vr02ubn67AQNkFS7Zy5GpXgBj6j0BMefUsHX9QiYoXg8QI/XoA/C/6xAPtp1wpStKA0e2dizpKni3WOeuX1d4doHO78euhJY7VrlUwaRR33W6og92vr593iXiZ4WxD4NFn7Y1ep32IhIdtu9J20hFQ4SghMc3OizT2wLfU+hX1idkv/GEk/rQjEQunkvpbmL6stM3Q9Rmnm/lPII9L3sxd8N/PeOLbrBu3KREo1fsT7iB3W//UaiMartVkTkktyw1SCmBZ6RwEzWaAphC5kh5+IvN+1S/QZjX838ClKH8fyBjsVzG6vkay+ty62IZneMfQy8ObmAq7zGG1qbv96mDm9+DcDsqROEHw1qHj6B4DtVltk1y3A6zOxEBv2Qx+HjuvxPGD+fe17wc+3PJUDjJohMLiKiI1hWV6PBxj7CdAur/1h/onZWnmrQQwut6JUabTOMIhYFRoY/mXwWeKOGboFy6OjBX/8HCJtHxH71Ph67wBkv8IG4BZA/GxIBcmsDh37UImvL8xVzfXn41LzUj4x8O5pr5nEAWKtYmwMnn49M5NZxirnfmjwgxA4MV27+0HVhPIJAhfoO4/UHSuH54uhuUZ8JzoQO5+0cGjGXMT2scOqJjTWdiwrMOgGMZY8iV55ro6f2r+oqP0XJyiiGjpR2lip+p9UPSgk=
     install:
     - dotnet restore Lachain.CommunicationHub.Net
     - dotnet build -c Release Lachain.CommunicationHub.Net
@@ -70,10 +69,10 @@ jobs:
     - mv /home/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/linux-x64
       lib
     - nuget pack Lachain.CommunicationHub.Native.nuspec
+    - dotnet nuget push Lachain.CommunicationHub.NativeLib.*.nupkg -k $NUGETKEY -s https://api.nuget.org/v3/index.json --timeout 600
     - cd Lachain.CommunicationHub.Net/
     - dotnet build Lachain.CommunicationHub.Net.sln
     - dotnet pack Lachain.CommunicationHub.Net.csproj
-    - dotnet nuget push Lachain.CommunicationHub.Native.*.nupkg -k $NUGETKEY -s https://api.nuget.org/v3/index.json --timeout 600
     deploy:
       provider: releases
       api_key: "$GITHUB_TOKEN"
