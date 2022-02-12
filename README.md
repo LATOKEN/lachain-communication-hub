@@ -47,7 +47,7 @@ Build testnub:
 ```
 Prepare local configs and script for test:
 ```
-    go run testhubconfiggen -peerNumber 30
+    go run ./testconfiggen.go -peerNumber 30
 ```
 Start local test (file will be generated with config generator):
 ```
