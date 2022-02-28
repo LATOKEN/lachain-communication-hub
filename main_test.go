@@ -155,7 +155,6 @@ func TestMassSend2Nodes(t *testing.T) {
 	}
 }
 
-
 func TestReconnect2Nodes(t *testing.T) {
 	loggo.ConfigureLoggers("<root>=TRACE")
 
@@ -195,9 +194,9 @@ func TestReconnect2Nodes(t *testing.T) {
 
 	go func() {
 		//for {
-			time.Sleep(1000 * time.Millisecond)
-			p2.Stop()
-			p2, _ = makeServerPeer(priv_key2, handler)
+		time.Sleep(1000 * time.Millisecond)
+		p2.Stop()
+		p2, _ = makeServerPeer(priv_key2, handler)
 		//}
 	}()
 
@@ -258,3 +257,99 @@ func TestBigMessage(t *testing.T) {
 	}
 }
 
+func TestMassSend2NodesMulti(t *testing.T) {
+	loggo.ConfigureLoggers("<root>=TRACE")
+
+	priv_key1, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+	priv_key2, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+
+	registerBootstrap(priv_key1, ":41011")
+	registerBootstrap(priv_key2, ":41012")
+
+	done1 := make(chan bool)
+	fail1 := make(chan bool)
+
+	done2 := make(chan bool)
+	fail2 := make(chan bool)
+
+	goldenMessage := []byte("fgdghfghfhgghfhj")
+	counter1 := 0
+	counter2 := 0
+
+	handler1 := func(msg []byte) {
+		if !bytes.Equal(msg, goldenMessage) {
+			log.Errorf("bad response")
+			fail1 <- true
+		}
+		assert.Equal(t, msg, goldenMessage)
+		if counter1++; counter1 == 10000 {
+			done1 <- true
+		}
+	}
+
+	handler2 := func(msg []byte) {
+		if !bytes.Equal(msg, goldenMessage) {
+			log.Errorf("bad response")
+			fail2 <- true
+		}
+		assert.Equal(t, msg, goldenMessage)
+		if counter2++; counter2 == 10000 {
+			done2 <- true
+		}
+	}
+
+	p1, pub1 := makeServerPeer(priv_key1, handler1)
+	defer p1.Stop()
+
+	p2, pub2 := makeServerPeer(priv_key2, handler2)
+	defer p2.Stop()
+
+	pub2str := hex.EncodeToString(pub2)
+	pub1str := hex.EncodeToString(pub1)
+
+	for j := 0; j < 100; j++ {
+		go func() {
+			for i := 0; i < 100; i++ {
+				p1.SendMessageToPeer(pub2str, goldenMessage)
+			}
+		}()
+	}
+
+	for j := 0; j < 100; j++ {
+		go func() {
+			for i := 0; i < 100; i++ {
+				p2.SendMessageToPeer(pub1str, goldenMessage)
+			}
+		}()
+	}
+
+	ticker := time.NewTicker(time.Minute)
+
+	select {
+	case <-done1:
+		ticker.Stop()
+		log.Infof("Finished")
+	case <-fail1:
+		ticker.Stop()
+		log.Errorf("Failed to process nessages")
+	case <-ticker.C:
+		log.Errorf("Failed to receive all messages in time")
+		t.Error("Failed to receive message in time")
+	}
+
+	select {
+	case <-done2:
+		ticker.Stop()
+		log.Infof("Finished")
+	case <-fail2:
+		ticker.Stop()
+		log.Errorf("Failed to process nessages")
+	case <-ticker.C:
+		log.Errorf("Failed to receive all messages in time")
+		t.Error("Failed to receive message in time")
+	}
+
+	fmt.Printf("%d counter1", counter1)
+	fmt.Printf("%d counter2", counter2)
+
+}
