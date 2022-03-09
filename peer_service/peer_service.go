@@ -2,18 +2,20 @@ package peer_service
 
 import (
 	"errors"
-	"github.com/juju/loggo"
-	core "github.com/libp2p/go-libp2p-core"
-	"github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/network"
-	"github.com/libp2p/go-libp2p-core/peer"
-	ma "github.com/multiformats/go-multiaddr"
+	"fmt"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer_service/connection"
 	"lachain-communication-hub/utils"
 	"strings"
 	"sync"
+
+	"github.com/juju/loggo"
+	core "github.com/libp2p/go-libp2p-core"
+	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p-core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 var log = loggo.GetLogger("peer_service")
@@ -29,9 +31,10 @@ type PeerService struct {
 	PublicKey         string
 	Signature         []byte
 	quit              chan struct{}
+	peerType          string
 }
 
-func New(priv_key crypto.PrivKey, handler func([]byte)) *PeerService {
+func New(priv_key crypto.PrivKey, handler func([]byte), peerType string) *PeerService {
 	localHost := host.BuildNamedHost(priv_key)
 	log.Infof("my id: %v", localHost.ID())
 	log.Infof("listening on: %v", localHost.Addrs())
@@ -46,18 +49,25 @@ func New(priv_key crypto.PrivKey, handler func([]byte)) *PeerService {
 	peerService.quit = make(chan struct{})
 	peerService.msgHandler = handler
 	peerService.Signature = nil
+	peerService.peerType = peerType
 	externalAddress, err := peerService.GetExternalMultiAddress()
 	if err != nil {
 		log.Errorf("Cannot determine my external address: %v", err)
 		panic(err)
 	}
 	peerService.myExternalAddress = externalAddress
-	peerService.host.SetStreamHandler("/", peerService.onConnect)
 
-	mAddrs := config.GetBootstrapMultiaddrs()
-	for i, bootstrapId := range config.GetBootstrapIDs() {
+	if peerType == "Validator" {
+		peerService.host.SetStreamHandler("/", peerService.onConnectVal)
+	} else {
+		peerService.host.SetStreamHandler("/", peerService.onConnect)
+	}
+
+	mAddrs := config.GetBootstrapMultiaddrs(peerType)
+	for i, bootstrapId := range config.GetBootstrapIDs(peerType) {
 		peerService.connect(bootstrapId, mAddrs[i])
 	}
+
 	return peerService
 }
 
@@ -78,13 +88,36 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
 }
 
 func (peerService *PeerService) onConnect(stream network.Stream) {
+
 	peerService.lock()
 	defer peerService.unlock()
 	if peerService.running == 0 {
 		return
 	}
 	id := stream.Conn().RemotePeer().Pretty()
-	log.Tracef("Got incoming stream from %v (%v)", id, stream.Conn().RemoteMultiaddr().String())
+	fmt.Printf("Got incoming stream from %v (%v)", id, stream.Conn().RemoteMultiaddr().String())
+	if conn, ok := peerService.connections[id]; ok {
+		conn.SetInboundStream(stream)
+		return
+	}
+	// TODO: manage peers to preserve important ones & exclude extra
+	newConnect := connection.FromStream(
+		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature,
+		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
+		peerService.AvailableRelays, peerService.GetPeers,
+	)
+	peerService.connections[id] = newConnect
+}
+
+func (peerService *PeerService) onConnectVal(stream network.Stream) {
+
+	peerService.lock()
+	defer peerService.unlock()
+	if peerService.running == 0 {
+		return
+	}
+	id := stream.Conn().RemotePeer().Pretty()
+	fmt.Printf("Got incoming Validator stream from %v (%v)", id, stream.Conn().RemoteMultiaddr().String())
 	if conn, ok := peerService.connections[id]; ok {
 		conn.SetInboundStream(stream)
 		return

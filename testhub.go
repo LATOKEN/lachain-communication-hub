@@ -20,6 +20,7 @@ type ConfigData struct {
 	Port       uint32 `json: "port"`
 	Bootstraps string `json: "bootstraps"`
 	Repeats    uint32 `json: "repeatCount"`
+	PeerType   string `json: "peerType"`
 }
 
 func BroadcastMessage(msg []byte, thisNode *RBCEmulation) {
@@ -28,33 +29,32 @@ func BroadcastMessage(msg []byte, thisNode *RBCEmulation) {
 	thisNode.Process(msg)
 }
 
-
 type RBCEmulation struct {
-	era uint32
-	idx uint32
+	era        uint32
+	idx        uint32
 	peerNumber uint32
-	vals []bool
-	echos map[uint32][]bool
-	readys []bool
+	vals       []bool
+	echos      map[uint32][]bool
+	readys     []bool
 }
 
 func NewRBCEmulation(idx uint32, participants uint32) *RBCEmulation {
 	ret := &RBCEmulation{
-		era: 0,
-		idx: idx,
-		peerNumber:  participants,
-		vals: make([]bool, participants,  participants),
-		echos: make(map[uint32][]bool),
-		readys: make([]bool, participants,  participants),
+		era:        0,
+		idx:        idx,
+		peerNumber: participants,
+		vals:       make([]bool, participants, participants),
+		echos:      make(map[uint32][]bool),
+		readys:     make([]bool, participants, participants),
 	}
 	for i := uint32(0); i < participants; i++ {
-		ret.echos[i] = make([]bool, participants,  participants)
+		ret.echos[i] = make([]bool, participants, participants)
 	}
 	return ret
 }
 
 func (p *RBCEmulation) BroadcastValMessage() {
-	data := map[string]uint32 {"type":0, "from":p.idx, "era":p.era}
+	data := map[string]uint32{"type": 0, "from": p.idx, "era": p.era}
 	datamsg, err := json.Marshal(data)
 	if err != nil {
 		panic(err)
@@ -65,7 +65,7 @@ func (p *RBCEmulation) BroadcastValMessage() {
 
 func (p *RBCEmulation) Process(msg []byte) {
 	var data map[string]uint32
-	err := json.Unmarshal(msg,  &data)
+	err := json.Unmarshal(msg, &data)
 	if err != nil {
 		panic(err)
 	}
@@ -75,13 +75,13 @@ func (p *RBCEmulation) Process(msg []byte) {
 	switch data["type"] {
 	case 0:
 		p.vals[data["from"]] = true
-		echo := map[string]uint32 {"type":1, "from":p.idx, "val":data["from"], "era":p.era}
+		echo := map[string]uint32{"type": 1, "from": p.idx, "val": data["from"], "era": p.era}
 		echomsg, err := json.Marshal(echo)
 		if err != nil {
 			fmt.Println("error:", err)
 		}
 		fmt.Printf("%d: send echo message for %d \n", p.idx, data["from"])
-		BroadcastMessage(echomsg ,p)
+		BroadcastMessage(echomsg, p)
 		break
 	case 1:
 		p.echos[data["from"]][data["val"]] = true
@@ -94,7 +94,7 @@ func (p *RBCEmulation) Process(msg []byte) {
 			}
 		}
 		if ready {
-			readydata := map[string]uint32 {"type":2, "from":p.idx, "era": p.era}
+			readydata := map[string]uint32{"type": 2, "from": p.idx, "era": p.era}
 			readymsg, err := json.Marshal(readydata)
 			if err != nil {
 				fmt.Println("error:", err)
@@ -119,14 +119,14 @@ func (p *RBCEmulation) IsReady() bool {
 }
 
 func getPeersCount(peers string) uint32 {
-	var data = strings.Split(peers,  ",")
+	var data = strings.Split(peers, ",")
 	return uint32(len(data))
 }
 
 func main() {
 	var configPath string
 
-	flag.StringVar(&configPath, "config", "testhubconfig0.json", "Config path,  defaiult value is testhubconfig0.json")
+	flag.StringVar(&configPath, "config", "testhubconfigRegular0.json", "Config path,  defaiult value is testhubconfigRegular0.json")
 	flag.Parse()
 
 	// read file
@@ -143,7 +143,7 @@ func main() {
 	}
 
 	// start hub
-	TestStartHub(config.Bootstraps, config.PrivateKey)
+	TestStartHub(config.Bootstraps, config.PrivateKey, config.PeerType)
 
 	// start RBC emulation
 	participants := getPeersCount(config.Bootstraps)

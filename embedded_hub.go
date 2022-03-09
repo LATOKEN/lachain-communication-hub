@@ -7,10 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/enriquebris/goconcurrentqueue"
-	"github.com/juju/loggo"
-	"github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer_service"
@@ -21,9 +17,14 @@ import (
 	"sync"
 	"time"
 	"unsafe"
-)
 
-import _ "net/http/pprof"
+	"github.com/enriquebris/goconcurrentqueue"
+	"github.com/juju/loggo"
+	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	_ "net/http/pprof"
+)
 
 var localPeer *peer_service.PeerService
 
@@ -48,10 +49,10 @@ func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int) {
 }
 
 //export TestStartHub
-func TestStartHub(bootstrapAddress string, privKeyHex string) {
+func TestStartHub(bootstrapAddress string, privKeyHex string, peerType string) {
 	mutex.Lock()
 	defer mutex.Unlock()
-	config.SetBootstrapAddress(bootstrapAddress)
+	config.SetBootstrapAddress(bootstrapAddress, peerType)
 	prvBytes, err := hex.DecodeString(string(privKeyHex))
 	if err != nil {
 		panic(err)
@@ -60,7 +61,7 @@ func TestStartHub(bootstrapAddress string, privKeyHex string) {
 	if err2 != nil {
 		panic(err2)
 	}
-	localPeer = peer_service.New(prv,  ProcessMessage)
+	localPeer = peer_service.New(prv, ProcessMessage, peerType)
 }
 
 //export GetKey
@@ -203,4 +204,3 @@ func StartProfiler() C.int {
 	}()
 	return C.int(<-portChannel)
 }
-
