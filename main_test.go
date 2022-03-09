@@ -23,13 +23,13 @@ var log = loggo.GetLogger("builder.go")
 func registerBootstrap(prv p2p_crypto.PrivKey, port string) {
 	id, _ := p2p_peer.IDFromPrivateKey(prv)
 	bootstrapAddress := p2p_peer.Encode(id) + "@127.0.0.1" + port
-	config.SetBootstrapAddress(bootstrapAddress)
+	config.SetBootstrapAddress(bootstrapAddress, "Regular")
 
 	log.Debugf("Register Bootstrap address: %s", bootstrapAddress)
 }
 
 func makeServerPeer(priv_key p2p_crypto.PrivKey, handler func([]byte)) (*peer_service.PeerService, []byte) {
-	p := peer_service.New(priv_key, handler)
+	p := peer_service.New(priv_key, handler, "Regular")
 
 	var id []byte
 	for {
