@@ -19,9 +19,10 @@ type Config struct {
 	Port       uint32 `json: "port"`
 	Bootstraps string `json: "bootstraps"`
 	Repeats    uint32 `json: "repeatCount"`
+	PeerType   string `json: "peerType"`
 }
 
-func generateLocalConfig(peerNumber uint, port uint, repeat uint) {
+func generateLocalConfig(peerNumber uint, port uint, repeat uint, peerType string) {
 	privateKeys := make([]p2p_crypto.PrivKey, peerNumber, peerNumber)
 	for i := uint(0); i < peerNumber; i++ {
 		privateKeys[i], _, _ = p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
@@ -52,6 +53,7 @@ func generateLocalConfig(peerNumber uint, port uint, repeat uint) {
 			Port:       nodePort,
 			Bootstraps: peerList,
 			Repeats:    uint32(repeat),
+			PeerType:   peerType,
 		}
 
 		databin, err := json.Marshal(data)
@@ -59,7 +61,7 @@ func generateLocalConfig(peerNumber uint, port uint, repeat uint) {
 			panic(err)
 		}
 
-		filename := fmt.Sprintf("testhubconfig%d.json", i)
+		filename := fmt.Sprintf("testhubconfig%s%d.json", peerType, i)
 		f, err := os.Create(filename)
 		if err != nil {
 			panic(err)
@@ -72,12 +74,14 @@ func generateLocalConfig(peerNumber uint, port uint, repeat uint) {
 		nodePort++
 	}
 
-	f, err := os.Create("./starthubs.sh")
+	startHubFileName := fmt.Sprintf("./starthubs%s.sh", peerType)
+
+	f, err := os.Create(startHubFileName)
 	if err != nil {
 		panic(err)
 	}
 	for i := uint(0); i < peerNumber; i++ {
-		line := fmt.Sprintf("./testhub -config ./testhubconfig%d.json &", i)
+		line := fmt.Sprintf("./testhub -config ./testhubconfig%s%d.json &", peerType, i)
 		f.WriteString(line)
 	}
 	f.Sync()
@@ -183,13 +187,15 @@ func generateRemoteConfig(ips string, port uint, sshkeypath string, repeat uint)
 }
 
 func main() {
+	var peerNumberVal uint
 	var peerNumber uint
 	var port uint
 	var ips string
 	var sshkeypath string
 	var repeat uint
+	flag.UintVar(&peerNumberVal, "peerNumberVal", 2, "Specify number of Validator peers in test, should match number of peers in ips for remote tests, default value is 2")
 	flag.UintVar(&peerNumber, "peerNumber", 4, "Specify number of peers in test, should match number of peers in ips for remote tests, default value is 4")
-	flag.UintVar(&port, "port", 7070, "Base port value for local tests and port for remote hosts, default value is 7070")
+	flag.UintVar(&port, "port", 7080, "Base port value for local tests and port for remote hosts, default value is 7070")
 	flag.StringVar(&ips, "ips", "", "Comma-separated list of hosts for remote tests,  empty for local tests, default value is empty")
 	flag.StringVar(&sshkeypath, "key", "", "Path to key file to use in ssh for remote tests, empty for local tests, default value is empty")
 	flag.UintVar(&repeat, "repeat", 100, "Repeat count for RBC emulation, default value is 100")
@@ -198,6 +204,7 @@ func main() {
 	if len(ips) > 0 {
 		generateRemoteConfig(ips, port, sshkeypath, repeat)
 	} else {
-		generateLocalConfig(peerNumber, port, repeat)
+		generateLocalConfig(peerNumber, port, repeat, "Regular")
+		generateLocalConfig(peerNumberVal, port+peerNumber, repeat, "Validator")
 	}
 }
