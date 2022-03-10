@@ -78,8 +78,9 @@ func GetBootstrapIDs(peerType string) []peer.ID {
 	defer lock.Unlock()
 
 	var ids []peer.ID
+
 	if peerType == "Validator" {
-		for _, relayId := range RelayIds {
+		for _, relayId := range RelayIdsVal {
 			id, err := peer.Decode(relayId)
 			if err != nil {
 				panic(err)
@@ -87,7 +88,7 @@ func GetBootstrapIDs(peerType string) []peer.ID {
 			ids = append(ids, id)
 		}
 	} else {
-		for _, relayId := range RelayIdsVal {
+		for _, relayId := range RelayIds {
 			id, err := peer.Decode(relayId)
 			if err != nil {
 				panic(err)
