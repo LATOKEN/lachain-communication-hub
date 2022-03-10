@@ -40,12 +40,12 @@ func ProcessMessage(msg []byte) {
 }
 
 //export StartHub
-func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int) {
+func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, peerType string) {
 	mutex.Lock()
 	defer mutex.Unlock()
-	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen))
+	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen), peerType)
 	priv_key := host.GetPrivateKeyForHost("_h1")
-	localPeer = peer_service.New(priv_key, ProcessMessage)
+	localPeer = peer_service.New(priv_key, ProcessMessage, peerType)
 }
 
 //export TestStartHub
