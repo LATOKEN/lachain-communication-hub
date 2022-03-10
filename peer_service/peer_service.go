@@ -35,7 +35,7 @@ type PeerService struct {
 }
 
 func New(priv_key crypto.PrivKey, handler func([]byte), peerType string) *PeerService {
-	localHost := host.BuildNamedHost(priv_key)
+	localHost := host.BuildNamedHost(priv_key, peerType)
 	log.Infof("my id: %v", localHost.ID())
 	log.Infof("listening on: %v", localHost.Addrs())
 
@@ -57,11 +57,7 @@ func New(priv_key crypto.PrivKey, handler func([]byte), peerType string) *PeerSe
 	}
 	peerService.myExternalAddress = externalAddress
 
-	if peerType == "Validator" {
-		peerService.host.SetStreamHandler("/", peerService.onConnectVal)
-	} else {
-		peerService.host.SetStreamHandler("/", peerService.onConnect)
-	}
+	peerService.host.SetStreamHandler("/", peerService.onConnect)
 
 	mAddrs := config.GetBootstrapMultiaddrs(peerType)
 	for i, bootstrapId := range config.GetBootstrapIDs(peerType) {
@@ -96,28 +92,6 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 	}
 	id := stream.Conn().RemotePeer().Pretty()
 	fmt.Printf("Got incoming stream from %v (%v)", id, stream.Conn().RemoteMultiaddr().String())
-	if conn, ok := peerService.connections[id]; ok {
-		conn.SetInboundStream(stream)
-		return
-	}
-	// TODO: manage peers to preserve important ones & exclude extra
-	newConnect := connection.FromStream(
-		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature,
-		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
-		peerService.AvailableRelays, peerService.GetPeers,
-	)
-	peerService.connections[id] = newConnect
-}
-
-func (peerService *PeerService) onConnectVal(stream network.Stream) {
-
-	peerService.lock()
-	defer peerService.unlock()
-	if peerService.running == 0 {
-		return
-	}
-	id := stream.Conn().RemotePeer().Pretty()
-	fmt.Printf("Got incoming Validator stream from %v (%v)", id, stream.Conn().RemoteMultiaddr().String())
 	if conn, ok := peerService.connections[id]; ok {
 		conn.SetInboundStream(stream)
 		return

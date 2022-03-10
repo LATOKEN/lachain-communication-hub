@@ -83,7 +83,7 @@ func GenerateKey(count int) {
 	}
 }
 
-func BuildNamedHost(priv_key crypto.PrivKey) core.Host {
+func BuildNamedHost(priv_key crypto.PrivKey, peerType string) core.Host {
 
 	prvKeyOpt := func(c *config.Config) error {
 		c.PeerKey = priv_key
@@ -99,7 +99,7 @@ func BuildNamedHost(priv_key crypto.PrivKey) core.Host {
 	var listenAddrs libp2p.Option
 
 	// set port if we are bootstrap
-	for _, addr := range conf.GetBootstrapIDAddresses(myId) {
+	for _, addr := range conf.GetBootstrapIDAddresses(myId, peerType) {
 		listenAddrs = libp2p.ListenAddrs(addr)
 	}
 	if listenAddrs == nil {
