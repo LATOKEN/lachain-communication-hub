@@ -45,15 +45,20 @@ namespace Lachain.CommunicationHub.Net
             );
         }
 
-        public static void Start(string bootstrapAddress)
+        public static void Start(string bootstrapAddress, string peerType)
         {
             unsafe
             {
                 var bootstrapAddressBytes = Encoding.UTF8.GetBytes(bootstrapAddress);
+                var peerTypeBytes = Encoding.UTF8.GetBytes(peerType);
+
+                // TODO
+                byte* peerTypePtr = peerTypeBytes;
+
                 fixed (byte* bootstrapAddressPtr = bootstrapAddressBytes)
                 {
                     Imports.StartHub.Value(
-                        bootstrapAddressPtr, bootstrapAddressBytes.Length
+                        bootstrapAddressPtr, bootstrapAddressBytes.Length, peerTypePtr, peerTypeBytes.Length
                     );
                 }
             }
