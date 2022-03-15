@@ -55,6 +55,22 @@ func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, privKey unsaf
 		ProcessMessage)
 }
 
+//export TestStartHub
+func TestStartHub(bootstrapAddress string, privKeyHex string) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	config.SetBootstrapAddress(bootstrapAddress)
+	prvBytes, err := hex.DecodeString(string(privKeyHex))
+	if err != nil {
+		panic(err)
+	}
+	prv, err2 := crypto.UnmarshalPrivateKey(prvBytes)
+	if err2 != nil {
+		panic(err2)
+	}
+	localPeer = peer_service.New(prv, "testhub", 1, 0, ProcessMessage)
+}
+
 //export GetKey
 func GetKey(buffer unsafe.Pointer, maxLength C.int) C.int {
 	mutex.Lock()
@@ -220,5 +236,3 @@ func GenerateNewKey(buffer unsafe.Pointer, bufferLen C.int) C.int {
 	C.memcpy(buffer, unsafe.Pointer(&data[0]), C.size_t(len(data)))
 	return C.int(len(data))
 }
-
-func main() {}
