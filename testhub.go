@@ -3,13 +3,18 @@ package main
 import "C"
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
+	configI "lachain-communication-hub/config"
+	"lachain-communication-hub/peer_service"
 	"strings"
 	"time"
 	"unsafe"
+
+	"github.com/libp2p/go-libp2p-core/crypto"
 )
 
 const bufSize = 10000
@@ -121,6 +126,24 @@ func (p *RBCEmulation) IsReady() bool {
 func getPeersCount(peers string) uint32 {
 	var data = strings.Split(peers, ",")
 	return uint32(len(data))
+}
+
+//export TestStartHub
+func TestStartHub(bootstrapAddress string, privKeyHex string, network string) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	// Hardcode chainId
+	configI.ChainId = byte(41)
+	configI.SetBootstrapAddress(bootstrapAddress)
+	prvBytes, err := hex.DecodeString(string(privKeyHex))
+	if err != nil {
+		panic(err)
+	}
+	prv, err2 := crypto.UnmarshalPrivateKey(prvBytes)
+	if err2 != nil {
+		panic(err2)
+	}
+	localPeer = peer_service.New(prv, network, 1, 0, ProcessMessage)
 }
 
 func main() {
