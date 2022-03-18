@@ -23,13 +23,14 @@ var log = loggo.GetLogger("builder.go")
 func registerBootstrap(prv p2p_crypto.PrivKey, port string) {
 	id, _ := p2p_peer.IDFromPrivateKey(prv)
 	bootstrapAddress := p2p_peer.Encode(id) + "@127.0.0.1" + port
+	config.ChainId = byte(41)
 	config.SetBootstrapAddress(bootstrapAddress)
 
 	log.Debugf("Register Bootstrap address: %s", bootstrapAddress)
 }
 
 func makeServerPeer(priv_key p2p_crypto.PrivKey, network string, version int32, minPeerVersion int32, handler func([]byte)) (*peer_service.PeerService, []byte) {
-	p := peer_service.New(priv_key, network, version, minPeerVersion, 41, handler)
+	p := peer_service.New(priv_key, network, version, minPeerVersion, handler)
 
 	var id []byte
 	for {
@@ -194,9 +195,9 @@ func TestReconnect2Nodes(t *testing.T) {
 
 	go func() {
 		//for {
-			time.Sleep(1000 * time.Millisecond)
-			p2.Stop()
-			p2, _ = makeServerPeer(priv_key2, "unittest", 1, 0, handler)
+		time.Sleep(1000 * time.Millisecond)
+		p2.Stop()
+		p2, _ = makeServerPeer(priv_key2, "unittest", 1, 0, handler)
 		//}
 	}()
 
