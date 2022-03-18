@@ -56,9 +56,11 @@ func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, privKey unsaf
 }
 
 //export TestStartHub
-func TestStartHub(bootstrapAddress string, privKeyHex string) {
+func TestStartHub(bootstrapAddress string, privKeyHex string, network string) {
 	mutex.Lock()
 	defer mutex.Unlock()
+	// Hardcode chainId
+	config.ChainId = byte(41)
 	config.SetBootstrapAddress(bootstrapAddress)
 	prvBytes, err := hex.DecodeString(string(privKeyHex))
 	if err != nil {
@@ -68,7 +70,7 @@ func TestStartHub(bootstrapAddress string, privKeyHex string) {
 	if err2 != nil {
 		panic(err2)
 	}
-	localPeer = peer_service.New(prv, "testhub", 1, 0, ProcessMessage)
+	localPeer = peer_service.New(prv, network, 1, 0, ProcessMessage)
 }
 
 //export GetKey

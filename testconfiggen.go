@@ -19,9 +19,10 @@ type Config struct {
 	Port       uint32 `json: "port"`
 	Bootstraps string `json: "bootstraps"`
 	Repeats    uint32 `json: "repeatCount"`
+	Network    string `json: "network"`
 }
 
-func generateLocalConfig(peerNumber uint, port uint, repeat uint) {
+func generateLocalConfig(peerNumber uint, port uint, repeat uint, numNetwork uint) {
 	privateKeys := make([]p2p_crypto.PrivKey, peerNumber, peerNumber)
 	for i := uint(0); i < peerNumber; i++ {
 		privateKeys[i], _, _ = p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
@@ -46,12 +47,15 @@ func generateLocalConfig(peerNumber uint, port uint, repeat uint) {
 			panic(err)
 		}
 
+		network := "network" + fmt.Sprintf("%v", i%numNetwork)
+
 		data := Config{
 			PrivateKey: hex.EncodeToString(prvBytes),
 			Idx:        uint32(i),
 			Port:       nodePort,
 			Bootstraps: peerList,
 			Repeats:    uint32(repeat),
+			Network:    network,
 		}
 
 		databin, err := json.Marshal(data)
@@ -188,16 +192,19 @@ func main() {
 	var ips string
 	var sshkeypath string
 	var repeat uint
+	var numNetwork uint
 	flag.UintVar(&peerNumber, "peerNumber", 4, "Specify number of peers in test, should match number of peers in ips for remote tests, default value is 4")
 	flag.UintVar(&port, "port", 7070, "Base port value for local tests and port for remote hosts, default value is 7070")
 	flag.StringVar(&ips, "ips", "", "Comma-separated list of hosts for remote tests,  empty for local tests, default value is empty")
 	flag.StringVar(&sshkeypath, "key", "", "Path to key file to use in ssh for remote tests, empty for local tests, default value is empty")
 	flag.UintVar(&repeat, "repeat", 100, "Repeat count for RBC emulation, default value is 100")
+	flag.UintVar(&numNetwork, "numNetwork", 1, "Number of netoworks, default value is 1")
+
 	flag.Parse()
 
 	if len(ips) > 0 {
 		generateRemoteConfig(ips, port, sshkeypath, repeat)
 	} else {
-		generateLocalConfig(peerNumber, port, repeat)
+		generateLocalConfig(peerNumber, port, repeat, numNetwork)
 	}
 }
