@@ -394,3 +394,87 @@ func TestProtocol(t *testing.T) {
 	case <-time.After(time.Second):
 	}
 }
+
+func TestTemp(t *testing.T) {
+
+	loggo.ConfigureLoggers("<root>=TRACE")
+
+	priv_key1, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+	priv_key2, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+	priv_key3, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+
+	registerBootstrap(priv_key1, ":41011")
+	registerBootstrap(priv_key2, ":41012")
+	registerBootstrap(priv_key3, ":41013")
+
+	done1 := make(chan bool)
+	done2 := make(chan bool)
+
+	goldenMessage := []byte("dfstrdfgcrjtdg")
+
+	handler1 := func(msg []byte) {
+		log.Infof("received message 1: %s", string(msg))
+		log.Infof("len, %v", len(goldenMessage))
+		log.Infof("len, %v", len(msg))
+		if !bytes.Equal(msg, goldenMessage) {
+			log.Errorf("bad response")
+		}
+		assert.Equal(t, msg, goldenMessage)
+		done1 <- true
+	}
+	handler2 := func(msg []byte) {
+		log.Infof("received message 2: %s", string(msg))
+		log.Infof("len, %v", len(goldenMessage))
+		log.Infof("len, %v", len(msg))
+		if !bytes.Equal(msg, goldenMessage) {
+			log.Errorf("bad response")
+		}
+		assert.Equal(t, msg, goldenMessage)
+		done2 <- true
+	}
+
+	p1, _ := makeServerPeer(priv_key1, "Network1", 1, 0, func([]byte) {})
+	defer p1.Stop()
+	p2, _ := makeServerPeer(priv_key2, "Network1", 1, 0, handler1)
+	defer p2.Stop()
+	p3, _ := makeServerPeer(priv_key3, "Network1", 1, 0, handler2)
+	defer p3.Stop()
+
+	// Connect 2 of them with asdditional validator channel
+	// p1.connectValidatorChannel()
+	// p2.connectValidatorChannel()
+
+	// Send Message from V for NV
+	// Broadcast non-validator message from one validator,  verify all peers has received it
+	p1.BroadcastMessage(goldenMessage)
+	p2.BroadcastMessage(goldenMessage)
+	p3.BroadcastMessage(goldenMessage)
+
+	// Send Message from V for V
+	// Broadcast validator message from one validator,  verify second validator peer has receivbed it and non-validator peer has not received it
+	// p1.BroadcastValMessage(goldenMessage)
+
+	// Send Message from NV for V
+	// Broadcast from non-validator peer validator message,  verify none of this peers received it
+	// p3.BroadcastValMessage(goldenMessage)
+
+	// Send Message from NV for NV
+	// broadcast non-validator message from nonb-validator peer,  verify all peers have received it
+	// p3.BroadcastMessage(goldenMessage)
+
+	// p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage)
+
+	// p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage)
+	// p2.SendMessageToPeer(hex.EncodeToString(pub3), goldenMessage)
+
+	ticker := time.NewTicker(time.Minute)
+	select {
+	case <-done1:
+		ticker.Stop()
+		log.Infof("Finished")
+	case <-ticker.C:
+		log.Errorf("Failed to receive message in time")
+		t.Error("Failed to receive message in time")
+	}
+
+}
