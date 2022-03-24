@@ -3,6 +3,13 @@ package peer_service
 import (
 	"errors"
 	"fmt"
+	"lachain-communication-hub/config"
+	"lachain-communication-hub/host"
+	"lachain-communication-hub/peer_service/connection"
+	"lachain-communication-hub/utils"
+	"strings"
+	"sync"
+
 	"github.com/juju/loggo"
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/crypto"
@@ -10,12 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
 	ma "github.com/multiformats/go-multiaddr"
-	"lachain-communication-hub/config"
-	"lachain-communication-hub/host"
-	"lachain-communication-hub/peer_service/connection"
-	"lachain-communication-hub/utils"
-	"strings"
-	"sync"
 )
 
 var log = loggo.GetLogger("peer_service")
@@ -25,6 +26,7 @@ type PeerService struct {
 	host              core.Host
 	myExternalAddress ma.Multiaddr
 	connections       map[string]*connection.Connection
+	connectionsVal    map[string]*connection.Connection
 	messages          map[string][][]byte
 	mutex             *sync.Mutex
 	msgHandler        func([]byte)
@@ -32,9 +34,9 @@ type PeerService struct {
 	PublicKey         string
 	Signature         []byte
 	quit              chan struct{}
-	networkName		  string
+	networkName       string
 	version           int32
-	minPeerVersion	  int32
+	minPeerVersion    int32
 }
 
 func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupportedVersion int32,
@@ -97,7 +99,7 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
 	}
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
 	conn := connection.New(
-		&peerService.host, id, protocolString, peerService.myExternalAddress, address,  nil,
+		&peerService.host, id, protocolString, peerService.myExternalAddress, address, nil,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
@@ -124,6 +126,54 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
 	peerService.connections[id] = newConnect
+}
+
+func (peerService *PeerService) connectValidatorChannel(id peer.ID, address ma.Multiaddr) {
+	peerService.lock()
+	defer peerService.unlock()
+
+	peerService.host.SetStreamHandler("/", peerService.onConnectVal)
+
+	// mAddrs := config.GetBootstrapMultiaddrs()
+	// for i, bootstrapId := range config.GetBootstrapIDs() {
+	// 	peerService.connect(bootstrapId, mAddrs[i])
+	// }
+
+	if id == peerService.host.ID() {
+		return
+	}
+	if _, ok := peerService.connectionsVal[id.Pretty()]; id == peerService.host.ID() || ok {
+		return
+	}
+	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
+	conn := connection.New(
+		&peerService.host, id, protocolString, peerService.myExternalAddress, address, nil,
+		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
+		peerService.AvailableRelays, peerService.GetPeers,
+	)
+	peerService.connectionsVal[id.Pretty()] = conn
+}
+
+func (peerService *PeerService) onConnectVal(stream network.Stream) {
+	peerService.lock()
+	defer peerService.unlock()
+	if peerService.running == 0 {
+		return
+	}
+	id := stream.Conn().RemotePeer().Pretty()
+	log.Tracef("Got incoming stream from %v (%v)", id, stream.Conn().RemoteMultiaddr().String())
+	if conn, ok := peerService.connections[id]; ok {
+		conn.SetInboundStream(stream)
+		return
+	}
+	// TODO: manage peers to preserve important ones & exclude extra
+	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
+	newConnect := connection.FromStream(
+		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, protocolString,
+		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
+		peerService.AvailableRelays, peerService.GetPeers,
+	)
+	peerService.connectionsVal[id] = newConnect
 }
 
 func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection, publicKey string) {
