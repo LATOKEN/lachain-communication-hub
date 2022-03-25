@@ -1,6 +1,8 @@
 package peer_service
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"lachain-communication-hub/config"
@@ -16,17 +18,24 @@ import (
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 var log = loggo.GetLogger("peer_service")
 var protocolFormat = "%s %d"
 
+// ChatMessage gets converted to/from JSON and sent in the body of pubsub messages.
+type ChatMessage struct {
+	Message    string
+	SenderID   string
+	SenderNick string
+}
+
 type PeerService struct {
 	host              core.Host
 	myExternalAddress ma.Multiaddr
 	connections       map[string]*connection.Connection
-	connectionsVal    map[string]*connection.Connection
 	messages          map[string][][]byte
 	mutex             *sync.Mutex
 	msgHandler        func([]byte)
@@ -37,6 +46,8 @@ type PeerService struct {
 	networkName       string
 	version           int32
 	minPeerVersion    int32
+
+	MessagesCh chan *ChatMessage
 }
 
 func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupportedVersion int32,
@@ -66,6 +77,8 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	peerService.minPeerVersion = minimalSupportedVersion
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
 	peerService.host.SetStreamHandlerMatch(protocol.ID(protocolString), peerService.networkMatcher, peerService.onConnect)
+
+	peerService.MessagesCh = make(chan *ChatMessage, 128)
 
 	mAddrs := config.GetBootstrapMultiaddrs()
 	for i, bootstrapId := range config.GetBootstrapIDs() {
@@ -132,48 +145,62 @@ func (peerService *PeerService) connectValidatorChannel(id peer.ID, address ma.M
 	peerService.lock()
 	defer peerService.unlock()
 
-	peerService.host.SetStreamHandler("/", peerService.onConnectVal)
+	ctx := context.Background()
 
-	// mAddrs := config.GetBootstrapMultiaddrs()
-	// for i, bootstrapId := range config.GetBootstrapIDs() {
-	// 	peerService.connect(bootstrapId, mAddrs[i])
+	// create a new PubSub service using the GossipSub router
+	ps, err := pubsub.NewGossipSub(ctx, peerService.host)
+
+	if err != nil {
+		panic(err)
+	}
+
+	// join the pubsub topic
+	topic, err := ps.Join("validator-channel")
+
+	if err != nil {
+		panic(err)
+	}
+
+	// and subscribe to it
+	sub, err := topic.Subscribe()
+	if err != nil {
+		panic(err)
+	}
+
+	// messageChan := make(chan *ChatMessage, 128)
+
+	go peerService.readLoop(ctx, sub)
+	// // join the chat room
+	// cr, err := JoinChatRoom(ctx, ps, peerService.host.ID(), nick, room)
+	// if err != nil {
+	// 	panic(err)
 	// }
 
-	if id == peerService.host.ID() {
-		return
-	}
-	if _, ok := peerService.connectionsVal[id.Pretty()]; id == peerService.host.ID() || ok {
-		return
-	}
-	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
-	conn := connection.New(
-		&peerService.host, id, protocolString, peerService.myExternalAddress, address, nil,
-		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
-		peerService.AvailableRelays, peerService.GetPeers,
-	)
-	peerService.connectionsVal[id.Pretty()] = conn
 }
 
-func (peerService *PeerService) onConnectVal(stream network.Stream) {
-	peerService.lock()
-	defer peerService.unlock()
-	if peerService.running == 0 {
-		return
+func (peerService *PeerService) readLoop(ctx context.Context, sub *pubsub.Subscription) {
+	for {
+		msg, err := sub.Next(ctx)
+
+		if err != nil {
+			close(peerService.MessagesCh)
+			return
+		}
+
+		// // only forward messages delivered by others
+		// if msg.ReceivedFrom == cr.self {
+		// 	continue
+		// }
+
+		cm := new(ChatMessage)
+		err = json.Unmarshal(msg.Data, cm)
+
+		if err != nil {
+			continue
+		}
+		// send valid messages onto the Messages channel
+		peerService.MessagesCh <- cm
 	}
-	id := stream.Conn().RemotePeer().Pretty()
-	log.Tracef("Got incoming stream from %v (%v)", id, stream.Conn().RemoteMultiaddr().String())
-	if conn, ok := peerService.connections[id]; ok {
-		conn.SetInboundStream(stream)
-		return
-	}
-	// TODO: manage peers to preserve important ones & exclude extra
-	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
-	newConnect := connection.FromStream(
-		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, protocolString,
-		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
-		peerService.AvailableRelays, peerService.GetPeers,
-	)
-	peerService.connectionsVal[id] = newConnect
 }
 
 func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection, publicKey string) {
