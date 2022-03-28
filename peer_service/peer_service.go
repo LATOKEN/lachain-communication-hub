@@ -141,7 +141,7 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 	peerService.connections[id] = newConnect
 }
 
-func (peerService *PeerService) connectValidatorChannel(id peer.ID, address ma.Multiaddr) {
+func (peerService *PeerService) connectValidatorChannel() {
 	peerService.lock()
 	defer peerService.unlock()
 
@@ -202,6 +202,12 @@ func (peerService *PeerService) readLoop(ctx context.Context, sub *pubsub.Subscr
 		peerService.MessagesCh <- cm
 	}
 }
+
+// func (peerService *PeerService) BroadcastValMessage(msg []byte) {
+// 	peerService.lock()
+// 	defer peerService.unlock()
+
+// }
 
 func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection, publicKey string) {
 	if peerService.running == 0 {
