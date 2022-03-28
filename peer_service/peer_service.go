@@ -2,35 +2,33 @@ package peer_service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"lachain-communication-hub/config"
-	"lachain-communication-hub/host"
+	lh "lachain-communication-hub/host"
 	"lachain-communication-hub/peer_service/connection"
 	"lachain-communication-hub/utils"
+	"os"
 	"strings"
 	"sync"
 
 	"github.com/juju/loggo"
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/host"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
 var log = loggo.GetLogger("peer_service")
 var protocolFormat = "%s %d"
 
-// ChatMessage gets converted to/from JSON and sent in the body of pubsub messages.
-type ChatMessage struct {
-	Message    string
-	SenderID   string
-	SenderNick string
-}
+// DiscoveryServiceTag is used in our mDNS advertisements to discover other chat peers.
+const DiscoveryServiceTag = "pubsub-chat-example"
 
 type PeerService struct {
 	host              core.Host
@@ -46,13 +44,19 @@ type PeerService struct {
 	networkName       string
 	version           int32
 	minPeerVersion    int32
+	chatroom          *ChatRoom
+	inputCh           chan string
+	doneValCh         chan struct{}
+}
 
-	MessagesCh chan *ChatMessage
+// discoveryNotifee gets notified when we find a new peer via mDNS discovery
+type discoveryNotifee struct {
+	h host.Host
 }
 
 func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupportedVersion int32,
 	handler func([]byte)) *PeerService {
-	localHost := host.BuildNamedHost(priv_key)
+	localHost := lh.BuildNamedHost(priv_key)
 	log.Infof("my id: %v", localHost.ID())
 	log.Infof("listening on: %v", localHost.Addrs())
 
@@ -78,7 +82,9 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
 	peerService.host.SetStreamHandlerMatch(protocol.ID(protocolString), peerService.networkMatcher, peerService.onConnect)
 
-	peerService.MessagesCh = make(chan *ChatMessage, 128)
+	// an input field for typing messages into
+	peerService.inputCh = make(chan string, 32)
+	peerService.doneValCh = make(chan struct{}, 1)
 
 	mAddrs := config.GetBootstrapMultiaddrs()
 	for i, bootstrapId := range config.GetBootstrapIDs() {
@@ -141,7 +147,7 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 	peerService.connections[id] = newConnect
 }
 
-func (peerService *PeerService) connectValidatorChannel() {
+func (peerService *PeerService) ConnectValidatorChannel() {
 	peerService.lock()
 	defer peerService.unlock()
 
@@ -154,60 +160,94 @@ func (peerService *PeerService) connectValidatorChannel() {
 		panic(err)
 	}
 
-	// join the pubsub topic
-	topic, err := ps.Join("validator-channel")
+	// setup local mDNS discovery
+	if err := setupDiscovery(peerService.host); err != nil {
+		panic(err)
+	}
+
+	// join the chat room
+	cr, err := JoinChatRoom(ctx, ps, peerService.host.ID(), "validator-channel")
 
 	if err != nil {
 		panic(err)
 	}
 
-	// and subscribe to it
-	sub, err := topic.Subscribe()
-	if err != nil {
-		panic(err)
-	}
-
-	// messageChan := make(chan *ChatMessage, 128)
-
-	go peerService.readLoop(ctx, sub)
-	// // join the chat room
-	// cr, err := JoinChatRoom(ctx, ps, peerService.host.ID(), nick, room)
-	// if err != nil {
-	// 	panic(err)
-	// }
+	peerService.chatroom = cr
+	go peerService.handleEvents(cr)
+	defer peerService.endValChannel()
 
 }
 
-func (peerService *PeerService) readLoop(ctx context.Context, sub *pubsub.Subscription) {
-	for {
-		msg, err := sub.Next(ctx)
+func (peerService *PeerService) DisconnectValidatorChannel() {
+	peerService.lock()
+	defer peerService.unlock()
 
-		if err != nil {
-			close(peerService.MessagesCh)
+	peerService.doneValCh <- struct{}{}
+}
+
+// handleEvents runs an event loop that sends user input to the chat room
+// and displays messages received from the chat room. It also periodically
+// refreshes the list of peers in the UI.
+func (peerService *PeerService) handleEvents(cr *ChatRoom) {
+	for {
+		select {
+		case input := <-peerService.inputCh:
+			// when the user types in a line, publish it to the chat room and print to the message window
+			err := cr.Publish(input)
+			if err != nil {
+				printErr("publish error: %s", err)
+			}
+			// ui.displaySelfMessage(input)
+
+		case m := <-cr.Messages:
+			// when we receive a message from the chat room, print it to the message window
+			fmt.Printf("message from validator(%s) channel:: %s", m.SenderID, m.Message)
+
+		case <-cr.ctx.Done():
+			return
+
+		case <-peerService.doneValCh:
 			return
 		}
-
-		// // only forward messages delivered by others
-		// if msg.ReceivedFrom == cr.self {
-		// 	continue
-		// }
-
-		cm := new(ChatMessage)
-		err = json.Unmarshal(msg.Data, cm)
-
-		if err != nil {
-			continue
-		}
-		// send valid messages onto the Messages channel
-		peerService.MessagesCh <- cm
 	}
 }
 
-// func (peerService *PeerService) BroadcastValMessage(msg []byte) {
-// 	peerService.lock()
-// 	defer peerService.unlock()
+func (peerService *PeerService) BroadcastValMessage(msg []byte) {
+	peerService.lock()
+	defer peerService.unlock()
 
-// }
+	// Publish message to "validator channel" topic
+	peerService.inputCh <- string(msg)
+
+}
+
+func (peerService *PeerService) endValChannel() {
+	peerService.doneValCh <- struct{}{}
+}
+
+// HandlePeerFound connects to peers discovered via mDNS. Once they're connected,
+// the PubSub system will automatically start interacting with them if they also
+// support PubSub.
+func (n *discoveryNotifee) HandlePeerFound(pi peer.AddrInfo) {
+	fmt.Printf("discovered new peer %s\n", pi.ID.Pretty())
+	err := n.h.Connect(context.Background(), pi)
+	if err != nil {
+		fmt.Printf("error connecting to peer %s: %s\n", pi.ID.Pretty(), err)
+	}
+}
+
+// setupDiscovery creates an mDNS discovery service and attaches it to the libp2p Host.
+// This lets us automatically discover peers on the same LAN and connect to them.
+func setupDiscovery(h host.Host) error {
+	// setup mDNS discovery to find local peers
+	s := mdns.NewMdnsService(h, DiscoveryServiceTag, &discoveryNotifee{h: h})
+	return s.Start()
+}
+
+// printErr is like fmt.Printf, but writes to stderr.
+func printErr(m string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, m, args...)
+}
 
 func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection, publicKey string) {
 	if peerService.running == 0 {

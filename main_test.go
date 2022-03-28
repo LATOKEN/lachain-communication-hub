@@ -441,8 +441,8 @@ func TestTemp(t *testing.T) {
 	defer p3.Stop()
 
 	// Connect 2 of them with asdditional validator channel
-	p1.connectValidatorChannel()
-	p2.connectValidatorChannel()
+	p1.ConnectValidatorChannel()
+	p2.ConnectValidatorChannel()
 
 	// p1.BroadcastMessage("netwokr")
 
