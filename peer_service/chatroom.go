@@ -26,6 +26,7 @@ type ChatRoom struct {
 
 	roomName string
 	self     peer.ID
+	nick     string
 }
 
 // ChatMessage gets converted to/from JSON and sent in the body of pubsub messages.
@@ -36,7 +37,7 @@ type ChatMessage struct {
 
 // JoinChatRoom tries to subscribe to the PubSub topic for the room name, returning
 // a ChatRoom on success.
-func JoinChatRoom(ctx context.Context, ps *pubsub.PubSub, selfID peer.ID, roomName string) (*ChatRoom, error) {
+func JoinChatRoom(ctx context.Context, ps *pubsub.PubSub, selfID peer.ID, nickname string, roomName string) (*ChatRoom, error) {
 	// join the pubsub topic
 	topic, err := ps.Join(topicName(roomName))
 	if err != nil {
@@ -56,6 +57,7 @@ func JoinChatRoom(ctx context.Context, ps *pubsub.PubSub, selfID peer.ID, roomNa
 		sub:      sub,
 		self:     selfID,
 		roomName: roomName,
+		nick:     nickname,
 		Messages: make(chan *ChatMessage, ChatRoomBufSize),
 	}
 
@@ -95,6 +97,7 @@ func (cr *ChatRoom) readLoop() {
 		}
 		cm := new(ChatMessage)
 		err = json.Unmarshal(msg.Data, cm)
+
 		if err != nil {
 			continue
 		}

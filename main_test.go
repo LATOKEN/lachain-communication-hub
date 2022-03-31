@@ -441,8 +441,8 @@ func TestTemp(t *testing.T) {
 	defer p3.Stop()
 
 	// Connect 2 of them with asdditional validator channel
-	p1.ConnectValidatorChannel()
-	p2.ConnectValidatorChannel()
+	go p1.ConnectValidatorChannel("peer 1")
+	go p2.ConnectValidatorChannel("peer 2")
 
 	// p1.BroadcastMessage("netwokr")
 
@@ -458,7 +458,7 @@ func TestTemp(t *testing.T) {
 
 	// Send Message from NV for V
 	// Broadcast from non-validator peer validator message,  verify none of this peers received it
-	// p3.BroadcastValMessage(goldenMessage)
+	p2.BroadcastValMessage(goldenMessage)
 
 	// Send Message from NV for NV
 	// broadcast non-validator message from nonb-validator peer,  verify all peers have received it

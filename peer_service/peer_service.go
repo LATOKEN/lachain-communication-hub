@@ -147,9 +147,9 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 	peerService.connections[id] = newConnect
 }
 
-func (peerService *PeerService) ConnectValidatorChannel() {
-	peerService.lock()
-	defer peerService.unlock()
+func (peerService *PeerService) ConnectValidatorChannel(nickname string) {
+	// peerService.lock()
+	// defer peerService.unlock()
 
 	ctx := context.Background()
 
@@ -166,7 +166,7 @@ func (peerService *PeerService) ConnectValidatorChannel() {
 	}
 
 	// join the chat room
-	cr, err := JoinChatRoom(ctx, ps, peerService.host.ID(), "validator-channel")
+	cr, err := JoinChatRoom(ctx, ps, peerService.host.ID(), nickname, "validator-channel")
 
 	if err != nil {
 		panic(err)
@@ -174,7 +174,7 @@ func (peerService *PeerService) ConnectValidatorChannel() {
 
 	peerService.chatroom = cr
 	go peerService.handleEvents(cr)
-	defer peerService.endValChannel()
+	// defer peerService.endValChannel()
 
 }
 
@@ -206,15 +206,15 @@ func (peerService *PeerService) handleEvents(cr *ChatRoom) {
 		case <-cr.ctx.Done():
 			return
 
-		case <-peerService.doneValCh:
-			return
+			// case <-peerService.doneValCh:
+			// 	return
 		}
 	}
 }
 
 func (peerService *PeerService) BroadcastValMessage(msg []byte) {
-	peerService.lock()
-	defer peerService.unlock()
+	// peerService.lock()
+	// defer peerService.unlock()
 
 	// Publish message to "validator channel" topic
 	peerService.inputCh <- string(msg)
