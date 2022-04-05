@@ -444,30 +444,23 @@ func TestTemp(t *testing.T) {
 	go p1.ConnectValidatorChannel("peer 1")
 	go p2.ConnectValidatorChannel("peer 2")
 
-	// p1.BroadcastMessage("netwokr")
-
 	// Send Message from V for NV
 	// Broadcast non-validator message from one validator,  verify all peers has received it
-	// p1.BroadcastMessage(goldenMessage)
-	// p2.BroadcastMessage(goldenMessage)
-	// p3.BroadcastMessage(goldenMessage)
+	p1.BroadcastMessage(goldenMessage)
+	p2.BroadcastMessage(goldenMessage)
+	p3.BroadcastMessage(goldenMessage)
 
 	// Send Message from V for V
 	// Broadcast validator message from one validator,  verify second validator peer has receivbed it and non-validator peer has not received it
-	// p1.BroadcastValMessage(goldenMessage)
+	p1.BroadcastValMessage(goldenMessage)
 
 	// Send Message from NV for V
 	// Broadcast from non-validator peer validator message,  verify none of this peers received it
-	p2.BroadcastValMessage(goldenMessage)
+	p3.BroadcastValMessage(goldenMessage)
 
 	// Send Message from NV for NV
 	// broadcast non-validator message from nonb-validator peer,  verify all peers have received it
-	// p3.BroadcastMessage(goldenMessage)
-
-	// p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage)
-
-	// p1.SendMessageToPeer(hex.EncodeToString(pub2), goldenMessage)
-	// p2.SendMessageToPeer(hex.EncodeToString(pub3), goldenMessage)
+	p3.BroadcastMessage(goldenMessage)
 
 	ticker := time.NewTicker(time.Minute)
 	select {
