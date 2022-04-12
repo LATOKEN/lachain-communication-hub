@@ -8,14 +8,17 @@ import (
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/peer_service"
 	"lachain-communication-hub/utils"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
 	p2p_crypto "github.com/libp2p/go-libp2p-core/crypto"
+	"github.com/libp2p/go-libp2p-core/peer"
 	p2p_peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/magiconair/properties/assert"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 var log = loggo.GetLogger("builder.go")
@@ -393,4 +396,119 @@ func TestProtocol(t *testing.T) {
 		t.Fatal("Wrong peer connected")
 	case <-time.After(time.Second):
 	}
+}
+
+func TestTemp(t *testing.T) {
+
+	loggo.ConfigureLoggers("<root>=TRACE")
+
+	priv_key1, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+	priv_key2, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+	priv_key3, _, _ := p2p_crypto.GenerateECDSAKeyPair(rand.Reader)
+
+	registerBootstrap(priv_key1, ":41011")
+	registerBootstrap(priv_key2, ":41012")
+	registerBootstrap(priv_key3, ":41013")
+
+	done1 := make(chan bool)
+	done2 := make(chan bool)
+
+	goldenMessage := []byte("dfstrdfgcrjtdg")
+
+	handler1 := func(msg []byte) {
+		log.Infof("received message 1: %s", string(msg))
+		log.Infof("len, %v", len(goldenMessage))
+		log.Infof("len, %v", len(msg))
+		if !bytes.Equal(msg, goldenMessage) {
+			log.Errorf("bad response")
+		}
+		assert.Equal(t, msg, goldenMessage)
+		done1 <- true
+	}
+	handler2 := func(msg []byte) {
+		log.Infof("received message 2: %s", string(msg))
+		log.Infof("len, %v", len(goldenMessage))
+		log.Infof("len, %v", len(msg))
+		if !bytes.Equal(msg, goldenMessage) {
+			log.Errorf("bad response")
+		}
+		assert.Equal(t, msg, goldenMessage)
+		done2 <- true
+	}
+
+	p1, _ := makeServerPeer(priv_key1, "Network1", 1, 0, func([]byte) {})
+	defer p1.Stop()
+	p2, _ := makeServerPeer(priv_key2, "Network1", 1, 0, handler1)
+	defer p2.Stop()
+	p3, _ := makeServerPeer(priv_key3, "Network1", 1, 0, handler2)
+	defer p3.Stop()
+
+	// From registerBootstrap
+	id1, _ := p2p_peer.IDFromPrivateKey(priv_key1)
+	id2, _ := p2p_peer.IDFromPrivateKey(priv_key2)
+	// id3, _ := p2p_peer.IDFromPrivateKey(priv_key3)
+
+	bootstrapAddress1 := p2p_peer.Encode(id1) + "@127.0.0.1" + ":41011"
+	bootstrapAddress2 := p2p_peer.Encode(id2) + "@127.0.0.1" + ":41012"
+	// bootstrapAddress3 := p2p_peer.Encode(id3) + "@127.0.0.1" + ":41013"
+
+	config.ChainId = byte(41)
+
+	// from setbootstrap
+	var parts1 = strings.Split(bootstrapAddress1, "@")
+	var parts2 = strings.Split(bootstrapAddress2, "@")
+	// var parts3 = strings.Split(bootstrapAddress3, "@")
+
+	var ipParts1 = strings.Split(parts1[1], ":")
+	var ipParts2 = strings.Split(parts2[1], ":")
+	// var ipParts3 = strings.Split(parts3[1], ":")
+
+	RelayAddrs1 := "/ip4/" + ipParts1[0] + "/tcp/" + ipParts1[1]
+	RelayAddrs2 := "/ip4/" + ipParts2[0] + "/tcp/" + ipParts2[1]
+	// RelayAddrs3 := "/ip4/" + ipParts3[0] + "/tcp/" + ipParts3[1]
+
+	RelayIds1 := parts1[0]
+	RelayIds2 := parts2[0]
+	// RelayIds3 := parts3[0]
+
+	relayMultiaddr1, _ := ma.NewMultiaddr(RelayAddrs1)
+	relayMultiaddr2, _ := ma.NewMultiaddr(RelayAddrs2)
+	// relayMultiaddr3, _ := ma.NewMultiaddr(RelayAddrs3)
+
+	Id1, _ := peer.Decode(RelayIds1)
+	Id2, _ := peer.Decode(RelayIds2)
+	// Id3, _ := peer.Decode(RelayIds3)
+
+	// Connect 2 of them with asdditional validator channel
+	p1.ConnectValidatorChannel(Id2, relayMultiaddr2)
+	p2.ConnectValidatorChannel(Id1, relayMultiaddr1)
+
+	// Send Message from V for NV
+	// Broadcast non-validator message from one validator,  verify all peers has received it
+	p1.BroadcastMessage(goldenMessage)
+	p2.BroadcastMessage(goldenMessage)
+	p3.BroadcastMessage(goldenMessage)
+
+	// Send Message from V for V
+	// Broadcast validator message from one validator,  verify second validator peer has receivbed it and non-validator peer has not received it
+	p1.BroadcastValMessage(goldenMessage)
+
+	// Send Message from NV for V
+	// Broadcast from non-validator peer validator message,  verify none of this peers received it
+	p3.BroadcastValMessage(goldenMessage)
+
+	// Send Message from NV for NV
+	// broadcast non-validator message from nonb-validator peer,  verify all peers have received it
+	p3.BroadcastMessage(goldenMessage)
+
+	ticker := time.NewTicker(time.Minute)
+	select {
+	case <-done1:
+		ticker.Stop()
+		log.Infof("Finished")
+	case <-ticker.C:
+		log.Errorf("Failed to receive message in time")
+		t.Error("Failed to receive message in time")
+	}
+
 }
