@@ -3,6 +3,13 @@ package peer_service
 import (
 	"errors"
 	"fmt"
+	"lachain-communication-hub/config"
+	"lachain-communication-hub/host"
+	"lachain-communication-hub/peer_service/connection"
+	"lachain-communication-hub/utils"
+	"strings"
+	"sync"
+
 	"github.com/juju/loggo"
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/crypto"
@@ -10,21 +17,16 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
 	ma "github.com/multiformats/go-multiaddr"
-	"lachain-communication-hub/config"
-	"lachain-communication-hub/host"
-	"lachain-communication-hub/peer_service/connection"
-	"lachain-communication-hub/utils"
-	"strings"
-	"sync"
 )
 
 var log = loggo.GetLogger("peer_service")
-var protocolFormat = "%s %d"
+var protocolFormat = "%s %d %s"
 
 type PeerService struct {
 	host              core.Host
 	myExternalAddress ma.Multiaddr
 	connections       map[string]*connection.Connection
+	valConnections    map[string]*connection.Connection
 	messages          map[string][][]byte
 	mutex             *sync.Mutex
 	msgHandler        func([]byte)
@@ -32,9 +34,9 @@ type PeerService struct {
 	PublicKey         string
 	Signature         []byte
 	quit              chan struct{}
-	networkName		  string
+	networkName       string
 	version           int32
-	minPeerVersion	  int32
+	minPeerVersion    int32
 }
 
 func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupportedVersion int32,
@@ -47,6 +49,7 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	peerService := new(PeerService)
 	peerService.host = localHost
 	peerService.connections = make(map[string]*connection.Connection)
+	peerService.valConnections = make(map[string]*connection.Connection)
 	peerService.messages = make(map[string][][]byte)
 	peerService.mutex = mut
 	peerService.running = 1
@@ -62,8 +65,11 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	peerService.networkName = networkName
 	peerService.version = version
 	peerService.minPeerVersion = minimalSupportedVersion
-	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
+	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version, "Normal")
 	peerService.host.SetStreamHandlerMatch(protocol.ID(protocolString), peerService.networkMatcher, peerService.onConnect)
+
+	valProtocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version, "Validator")
+	peerService.host.SetStreamHandlerMatch(protocol.ID(valProtocolString), peerService.networkMatcher, peerService.onConnectVal)
 
 	mAddrs := config.GetBootstrapMultiaddrs()
 	for i, bootstrapId := range config.GetBootstrapIDs() {
@@ -95,13 +101,30 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
 	if _, ok := peerService.connections[id.Pretty()]; id == peerService.host.ID() || ok {
 		return
 	}
-	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
+	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version, "Normal")
 	conn := connection.New(
-		&peerService.host, id, protocolString, peerService.myExternalAddress, address,  nil,
+		&peerService.host, id, protocolString, peerService.myExternalAddress, address, nil,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
 	peerService.connections[id.Pretty()] = conn
+}
+
+func (peerService *PeerService) ConnectValidatorChannel(id peer.ID, address ma.Multiaddr) {
+	if id == peerService.host.ID() {
+		return
+	}
+	if _, ok := peerService.valConnections[id.Pretty()]; id == peerService.host.ID() || ok {
+		return
+	}
+	valProtocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version, "Validator")
+
+	conn := connection.New(
+		&peerService.host, id, valProtocolString, peerService.myExternalAddress, address, nil,
+		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
+		peerService.AvailableRelays, peerService.GetPeers,
+	)
+	peerService.valConnections[id.Pretty()] = conn
 }
 
 func (peerService *PeerService) onConnect(stream network.Stream) {
@@ -124,6 +147,28 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
 	peerService.connections[id] = newConnect
+}
+
+func (peerService *PeerService) onConnectVal(stream network.Stream) {
+	peerService.lock()
+	defer peerService.unlock()
+	if peerService.running == 0 {
+		return
+	}
+	id := stream.Conn().RemotePeer().Pretty()
+	log.Tracef("Got incoming Validator stream from %v (%v)", id, stream.Conn().RemoteMultiaddr().String())
+	if conn, ok := peerService.valConnections[id]; ok {
+		conn.SetInboundStream(stream)
+		return
+	}
+	// TODO: manage peers to preserve important ones & exclude extra
+	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
+	newConnect := connection.FromStream(
+		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, protocolString,
+		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
+		peerService.AvailableRelays, peerService.GetPeers,
+	)
+	peerService.valConnections[id] = newConnect
 }
 
 func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection, publicKey string) {
@@ -248,6 +293,18 @@ func (peerService *PeerService) BroadcastMessage(msg []byte) {
 			continue
 		}
 		log.Tracef("Broadcasting to active peer %v (%v)", conn.PeerPublicKey, conn.PeerId.Pretty())
+		conn.Send(msg)
+	}
+}
+
+func (peerService *PeerService) BroadcastValMessage(msg []byte) {
+	peerService.lock()
+	defer peerService.unlock()
+	for _, conn := range peerService.valConnections {
+		if !conn.IsActive() && len(conn.PeerPublicKey) > 0 {
+			continue
+		}
+		log.Tracef("Broadcasting to active validator peer %v (%v)", conn.PeerPublicKey, conn.PeerId.Pretty())
 		conn.Send(msg)
 	}
 }
