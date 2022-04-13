@@ -17,8 +17,9 @@ import (
 	p2p_crypto "github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/peer"
 	p2p_peer "github.com/libp2p/go-libp2p-core/peer"
-	"github.com/magiconair/properties/assert"
 	ma "github.com/multiformats/go-multiaddr"
+
+	"github.com/magiconair/properties/assert"
 )
 
 var log = loggo.GetLogger("builder.go")
@@ -30,6 +31,13 @@ func registerBootstrap(prv p2p_crypto.PrivKey, port string) {
 	config.SetBootstrapAddress(bootstrapAddress)
 
 	log.Debugf("Register Bootstrap address: %s", bootstrapAddress)
+}
+
+func getBoostrapAddress(prv p2p_crypto.PrivKey, port string) string {
+	id, _ := p2p_peer.IDFromPrivateKey(prv)
+	bootstrapAddress := p2p_peer.Encode(id) + "@127.0.0.1" + port
+	config.ChainId = byte(41)
+	return bootstrapAddress
 }
 
 func makeServerPeer(priv_key p2p_crypto.PrivKey, network string, version int32, minPeerVersion int32, handler func([]byte)) (*peer_service.PeerService, []byte) {
@@ -444,15 +452,9 @@ func TestTemp(t *testing.T) {
 	defer p3.Stop()
 
 	// From registerBootstrap
-	id1, _ := p2p_peer.IDFromPrivateKey(priv_key1)
-	id2, _ := p2p_peer.IDFromPrivateKey(priv_key2)
-	// id3, _ := p2p_peer.IDFromPrivateKey(priv_key3)
-
-	bootstrapAddress1 := p2p_peer.Encode(id1) + "@127.0.0.1" + ":41011"
-	bootstrapAddress2 := p2p_peer.Encode(id2) + "@127.0.0.1" + ":41012"
-	// bootstrapAddress3 := p2p_peer.Encode(id3) + "@127.0.0.1" + ":41013"
-
-	config.ChainId = byte(41)
+	bootstrapAddress1 := getBoostrapAddress(priv_key1, ":41011")
+	bootstrapAddress2 := getBoostrapAddress(priv_key2, ":41012")
+	// bootstrapAddress3 :=  getBoostrapAddress(priv_key3, ":41013")
 
 	// from setbootstrap
 	var parts1 = strings.Split(bootstrapAddress1, "@")

@@ -81,7 +81,8 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 func (peerService *PeerService) networkMatcher(protocol string) bool {
 	var network string
 	var version int32
-	_, err := fmt.Sscanf(protocol, protocolFormat, &network, &version)
+	var channel string
+	_, err := fmt.Sscanf(protocol, protocolFormat, &network, &version, &channel)
 	if err != nil {
 		return false
 	}
@@ -121,8 +122,8 @@ func (peerService *PeerService) ConnectValidatorChannel(id peer.ID, address ma.M
 
 	conn := connection.New(
 		&peerService.host, id, valProtocolString, peerService.myExternalAddress, address, nil,
-		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
-		peerService.AvailableRelays, peerService.GetPeers,
+		peerService.updateValPeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
+		peerService.AvailableValRelays, peerService.GetValPeers,
 	)
 	peerService.valConnections[id.Pretty()] = conn
 }
@@ -140,7 +141,7 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 		return
 	}
 	// TODO: manage peers to preserve important ones & exclude extra
-	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
+	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version, "Normal")
 	newConnect := connection.FromStream(
 		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, protocolString,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
@@ -162,11 +163,13 @@ func (peerService *PeerService) onConnectVal(stream network.Stream) {
 		return
 	}
 	// TODO: manage peers to preserve important ones & exclude extra
-	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
+	// TODO: need to check if we need to maintain different message queue for validator
+
+	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version, "Validator")
 	newConnect := connection.FromStream(
 		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, protocolString,
-		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
-		peerService.AvailableRelays, peerService.GetPeers,
+		peerService.updateValPeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
+		peerService.AvailableValRelays, peerService.GetValPeers,
 	)
 	peerService.valConnections[id] = newConnect
 }
@@ -212,7 +215,56 @@ func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata) 
 	}
 }
 
+func (peerService *PeerService) updateValPeerList(newPeers []*connection.Metadata) {
+	if peerService.running == 0 {
+		return
+	}
+	peerService.lock()
+	defer peerService.unlock()
+	log.Tracef("Got list of %v potential validators peers", len(newPeers))
+	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version, "Validator")
+	for _, newPeer := range newPeers {
+		if newPeer.Id == peerService.host.ID() {
+			continue
+		}
+		if conn, ok := peerService.valConnections[newPeer.Id.Pretty()]; ok {
+			log.Tracef("Peer %v already has connection", newPeer.Id.Pretty())
+			if newPeer.Addr != nil {
+				conn.SetPeerAddress(newPeer.Addr)
+			}
+			continue
+		}
+		peerService.valConnections[newPeer.Id.Pretty()] = connection.New(
+			&peerService.host, newPeer.Id, protocolString, peerService.myExternalAddress, newPeer.Addr,
+			peerService.Signature,
+			peerService.updateValPeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
+			peerService.AvailableValRelays, peerService.GetValPeers,
+		)
+	}
+}
+
 func (peerService *PeerService) SetSignature(signature []byte) bool {
+	peerService.lock()
+	defer peerService.unlock()
+	peerId, err := peerService.host.ID().Marshal()
+	if err != nil {
+		log.Errorf("SetSignature: can't form data for signature check: %v", err)
+		return false
+	}
+	localPublicKey, err := utils.EcRecover(peerId, signature, config.ChainId)
+	if err != nil {
+		log.Errorf("%v", err)
+		return false
+	}
+	log.Debugf("Recovered public key from outside: %v", utils.PublicKeyToHexString(localPublicKey))
+	peerService.Signature = signature
+	for _, conn := range peerService.connections {
+		conn.SetSignature(signature)
+	}
+	return true
+}
+
+func (peerService *PeerService) SetSignatureVal(signature []byte) bool {
 	peerService.lock()
 	defer peerService.unlock()
 	peerId, err := peerService.host.ID().Marshal()
@@ -245,11 +297,40 @@ func (peerService *PeerService) AvailableRelays() []peer.ID {
 	return result
 }
 
+func (peerService *PeerService) AvailableValRelays() []peer.ID {
+	peerService.lock()
+	defer peerService.unlock()
+	var result []peer.ID
+	for _, conn := range peerService.valConnections {
+		if conn.IsActive() && conn.PeerAddress != nil {
+			result = append(result, conn.PeerId)
+		}
+	}
+	return result
+}
+
 func (peerService *PeerService) GetPeers() []*connection.Metadata {
 	peerService.lock()
 	defer peerService.unlock()
 	var result []*connection.Metadata
 	for _, conn := range peerService.connections {
+		if conn.IsActive() {
+			result = append(result, &connection.Metadata{
+				PublicKey: conn.PeerPublicKey,
+				Id:        conn.PeerId,
+				LastSeen:  0, // TODO: restore last seen mechanism
+				Addr:      conn.PeerAddress,
+			})
+		}
+	}
+	return result
+}
+
+func (peerService *PeerService) GetValPeers() []*connection.Metadata {
+	peerService.lock()
+	defer peerService.unlock()
+	var result []*connection.Metadata
+	for _, conn := range peerService.valConnections {
 		if conn.IsActive() {
 			result = append(result, &connection.Metadata{
 				PublicKey: conn.PeerPublicKey,
@@ -271,11 +352,34 @@ func (peerService *PeerService) connectionByPublicKey(publicKey string) *connect
 	return nil
 }
 
+func (peerService *PeerService) connectionByValPublicKey(publicKey string) *connection.Connection {
+	for _, conn := range peerService.valConnections {
+		if conn.PeerPublicKey == publicKey {
+			return conn
+		}
+	}
+	return nil
+}
+
 func (peerService *PeerService) SendMessageToPeer(publicKey string, msg []byte) bool {
 	peerService.lock()
 	defer peerService.unlock()
 
 	if conn := peerService.connectionByPublicKey(publicKey); conn != nil {
+		//log.Tracef("Sending message to peer %v message length %d", conn.PeerId.Pretty(), len(msg))
+		conn.Send(msg)
+		return true
+	}
+	log.Tracef("Postponed message to peer %v message length %d", publicKey, len(msg))
+	peerService.storeMessage(publicKey, msg)
+	return false
+}
+
+func (peerService *PeerService) SendMessageToValPeer(publicKey string, msg []byte) bool {
+	peerService.lock()
+	defer peerService.unlock()
+
+	if conn := peerService.connectionByValPublicKey(publicKey); conn != nil {
 		//log.Tracef("Sending message to peer %v message length %d", conn.PeerId.Pretty(), len(msg))
 		conn.Send(msg)
 		return true
