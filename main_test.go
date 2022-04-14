@@ -8,16 +8,13 @@ import (
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/peer_service"
 	"lachain-communication-hub/utils"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
 	p2p_crypto "github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/peer"
 	p2p_peer "github.com/libp2p/go-libp2p-core/peer"
-	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/magiconair/properties/assert"
 )
@@ -28,7 +25,7 @@ func registerBootstrap(prv p2p_crypto.PrivKey, port string) {
 	id, _ := p2p_peer.IDFromPrivateKey(prv)
 	bootstrapAddress := p2p_peer.Encode(id) + "@127.0.0.1" + port
 	config.ChainId = byte(41)
-	config.SetBootstrapAddress(bootstrapAddress)
+	config.SetBootstrapAddress(bootstrapAddress, "Normal")
 
 	log.Debugf("Register Bootstrap address: %s", bootstrapAddress)
 }
@@ -38,6 +35,15 @@ func getBoostrapAddress(prv p2p_crypto.PrivKey, port string) string {
 	bootstrapAddress := p2p_peer.Encode(id) + "@127.0.0.1" + port
 	config.ChainId = byte(41)
 	return bootstrapAddress
+}
+
+func registerBootstrapVal(prv p2p_crypto.PrivKey, port string) {
+	id, _ := p2p_peer.IDFromPrivateKey(prv)
+	bootstrapAddress := p2p_peer.Encode(id) + "@127.0.0.1" + port
+	config.ChainId = byte(41)
+	config.SetBootstrapAddress(bootstrapAddress, "Validator")
+
+	log.Debugf("Register validator Bootstrap address: %s", bootstrapAddress)
 }
 
 func makeServerPeer(priv_key p2p_crypto.PrivKey, network string, version int32, minPeerVersion int32, handler func([]byte)) (*peer_service.PeerService, []byte) {
@@ -420,11 +426,12 @@ func TestTemp(t *testing.T) {
 
 	done1 := make(chan bool)
 	done2 := make(chan bool)
+	done3 := make(chan bool)
 
 	goldenMessage := []byte("dfstrdfgcrjtdg")
 
 	handler1 := func(msg []byte) {
-		log.Infof("received message 1: %s", string(msg))
+		fmt.Printf("received message 1: %s", string(msg))
 		log.Infof("len, %v", len(goldenMessage))
 		log.Infof("len, %v", len(msg))
 		if !bytes.Equal(msg, goldenMessage) {
@@ -434,7 +441,7 @@ func TestTemp(t *testing.T) {
 		done1 <- true
 	}
 	handler2 := func(msg []byte) {
-		log.Infof("received message 2: %s", string(msg))
+		fmt.Printf("received message 2: %s", string(msg))
 		log.Infof("len, %v", len(goldenMessage))
 		log.Infof("len, %v", len(msg))
 		if !bytes.Equal(msg, goldenMessage) {
@@ -444,46 +451,34 @@ func TestTemp(t *testing.T) {
 		done2 <- true
 	}
 
-	p1, _ := makeServerPeer(priv_key1, "Network1", 1, 0, func([]byte) {})
+	handler3 := func(msg []byte) {
+		fmt.Printf("received message 3: %s", string(msg))
+		log.Infof("len, %v", len(goldenMessage))
+		log.Infof("len, %v", len(msg))
+		if !bytes.Equal(msg, goldenMessage) {
+			log.Errorf("bad response")
+		}
+		assert.Equal(t, msg, goldenMessage)
+		done3 <- true
+	}
+
+	p1, _ := makeServerPeer(priv_key1, "Network1", 1, 0, handler1)
 	defer p1.Stop()
-	p2, _ := makeServerPeer(priv_key2, "Network1", 1, 0, handler1)
+	p2, _ := makeServerPeer(priv_key2, "Network1", 1, 0, handler2)
 	defer p2.Stop()
-	p3, _ := makeServerPeer(priv_key3, "Network1", 1, 0, handler2)
+	p3, _ := makeServerPeer(priv_key3, "Network1", 1, 0, handler3)
 	defer p3.Stop()
 
-	// From registerBootstrap
-	bootstrapAddress1 := getBoostrapAddress(priv_key1, ":41011")
-	bootstrapAddress2 := getBoostrapAddress(priv_key2, ":41012")
-	// bootstrapAddress3 :=  getBoostrapAddress(priv_key3, ":41013")
+	// To connect to validator channel do this
+	registerBootstrapVal(priv_key1, ":41011")
+	registerBootstrapVal(priv_key2, ":41012")
 
-	// from setbootstrap
-	var parts1 = strings.Split(bootstrapAddress1, "@")
-	var parts2 = strings.Split(bootstrapAddress2, "@")
-	// var parts3 = strings.Split(bootstrapAddress3, "@")
-
-	var ipParts1 = strings.Split(parts1[1], ":")
-	var ipParts2 = strings.Split(parts2[1], ":")
-	// var ipParts3 = strings.Split(parts3[1], ":")
-
-	RelayAddrs1 := "/ip4/" + ipParts1[0] + "/tcp/" + ipParts1[1]
-	RelayAddrs2 := "/ip4/" + ipParts2[0] + "/tcp/" + ipParts2[1]
-	// RelayAddrs3 := "/ip4/" + ipParts3[0] + "/tcp/" + ipParts3[1]
-
-	RelayIds1 := parts1[0]
-	RelayIds2 := parts2[0]
-	// RelayIds3 := parts3[0]
-
-	relayMultiaddr1, _ := ma.NewMultiaddr(RelayAddrs1)
-	relayMultiaddr2, _ := ma.NewMultiaddr(RelayAddrs2)
-	// relayMultiaddr3, _ := ma.NewMultiaddr(RelayAddrs3)
-
-	Id1, _ := peer.Decode(RelayIds1)
-	Id2, _ := peer.Decode(RelayIds2)
-	// Id3, _ := peer.Decode(RelayIds3)
+	p1.SetSignatureVal()
+	p2.SetSignatureVal()
 
 	// Connect 2 of them with asdditional validator channel
-	p1.ConnectValidatorChannel(Id2, relayMultiaddr2)
-	p2.ConnectValidatorChannel(Id1, relayMultiaddr1)
+	p1.ConnectValidatorChannel()
+	p2.ConnectValidatorChannel()
 
 	// Send Message from V for NV
 	// Broadcast non-validator message from one validator,  verify all peers has received it
