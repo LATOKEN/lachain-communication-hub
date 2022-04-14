@@ -71,8 +71,8 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	valProtocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version, "Validator")
 	peerService.host.SetStreamHandlerMatch(protocol.ID(valProtocolString), peerService.networkMatcher, peerService.onConnectVal)
 
-	mAddrs := config.GetBootstrapMultiaddrs()
-	for i, bootstrapId := range config.GetBootstrapIDs() {
+	mAddrs := config.GetBootstrapMultiaddrs("Normal")
+	for i, bootstrapId := range config.GetBootstrapIDs("Normal") {
 		peerService.connect(bootstrapId, mAddrs[i])
 	}
 	return peerService
@@ -111,7 +111,14 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
 	peerService.connections[id.Pretty()] = conn
 }
 
-func (peerService *PeerService) ConnectValidatorChannel(id peer.ID, address ma.Multiaddr) {
+func (peerService *PeerService) ConnectValidatorChannel() {
+	mAddrs := config.GetBootstrapMultiaddrs("Validator")
+	for i, bootstrapId := range config.GetBootstrapIDs("Validator") {
+		peerService.connectVal(bootstrapId, mAddrs[i])
+	}
+}
+
+func (peerService *PeerService) connectVal(id peer.ID, address ma.Multiaddr) {
 	if id == peerService.host.ID() {
 		return
 	}
@@ -264,22 +271,13 @@ func (peerService *PeerService) SetSignature(signature []byte) bool {
 	return true
 }
 
-func (peerService *PeerService) SetSignatureVal(signature []byte) bool {
+func (peerService *PeerService) SetSignatureVal() bool {
 	peerService.lock()
 	defer peerService.unlock()
-	peerId, err := peerService.host.ID().Marshal()
-	if err != nil {
-		log.Errorf("SetSignature: can't form data for signature check: %v", err)
-		return false
-	}
-	localPublicKey, err := utils.EcRecover(peerId, signature, config.ChainId)
-	if err != nil {
-		log.Errorf("%v", err)
-		return false
-	}
-	log.Debugf("Recovered public key from outside: %v", utils.PublicKeyToHexString(localPublicKey))
-	peerService.Signature = signature
-	for _, conn := range peerService.connections {
+
+	signature := peerService.Signature
+
+	for _, conn := range peerService.valConnections {
 		conn.SetSignature(signature)
 	}
 	return true
@@ -385,7 +383,7 @@ func (peerService *PeerService) SendMessageToValPeer(publicKey string, msg []byt
 		return true
 	}
 	log.Tracef("Postponed message to peer %v message length %d", publicKey, len(msg))
-	peerService.storeMessage(publicKey, msg)
+	peerService.storeMessageVal(publicKey, msg)
 	return false
 }
 
@@ -493,6 +491,14 @@ func (peerService *PeerService) Stop() {
 
 func (peerService *PeerService) storeMessage(key string, msg []byte) {
 	if conn := peerService.connectionByPublicKey(key); conn != nil {
+		conn.Send(msg)
+	} else {
+		peerService.messages[key] = append(peerService.messages[key], msg)
+	}
+}
+
+func (peerService *PeerService) storeMessageVal(key string, msg []byte) {
+	if conn := peerService.connectionByValPublicKey(key); conn != nil {
 		conn.Send(msg)
 	} else {
 		peerService.messages[key] = append(peerService.messages[key], msg)

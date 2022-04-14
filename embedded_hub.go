@@ -44,7 +44,7 @@ func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, privKey unsaf
 	mutex.Lock()
 	defer mutex.Unlock()
 	config.ChainId = byte(chainId)
-	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen))
+	config.SetBootstrapAddress(C.GoStringN(bootstrapAddress, bootstrapAddressLen), "Normal")
 	prvBytes := C.GoBytes(privKey, privKeyLen)
 	prv, err2 := crypto.UnmarshalPrivateKey(prvBytes)
 	if err2 != nil {

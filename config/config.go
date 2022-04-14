@@ -12,14 +12,15 @@ import (
 var RelayAddrs []string
 var RelayIds []string
 
+var RelayAddrsVal []string
+var RelayIdsVal []string
+
 var ipLookup = true
 
 var ChainId = byte(0)
-
 var lock = sync.Mutex{}
 
-
-func SetBootstrapAddress(addressesString string) {
+func SetBootstrapAddress(addressesString string, peerType string) {
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -36,59 +37,102 @@ func SetBootstrapAddress(addressesString string) {
 		if len(ipParts) != 2 {
 			panic("cannot parse address: " + address)
 		}
-		RelayAddrs = append(RelayAddrs, "/ip4/"+ipParts[0]+"/tcp/"+ipParts[1])
-		RelayIds = append(RelayIds, parts[0])
+		if peerType == "Validator" {
+			RelayAddrsVal = append(RelayAddrsVal, "/ip4/"+ipParts[0]+"/tcp/"+ipParts[1])
+			RelayIdsVal = append(RelayIdsVal, parts[0])
+		} else {
+			RelayAddrs = append(RelayAddrs, "/ip4/"+ipParts[0]+"/tcp/"+ipParts[1])
+			RelayIds = append(RelayIds, parts[0])
+		}
 	}
 }
 
-func GetBootstrapMultiaddrs() []ma.Multiaddr {
+func GetBootstrapMultiaddrs(peerType string) []ma.Multiaddr {
 	lock.Lock()
 	defer lock.Unlock()
 
 	var multiAddrs []ma.Multiaddr
-	for _, addr := range RelayAddrs {
-		relayMultiaddr, err := ma.NewMultiaddr(addr)
-		if err != nil {
-			panic(err)
+
+	if peerType == "Validator" {
+		for _, addr := range RelayAddrsVal {
+			relayMultiaddr, err := ma.NewMultiaddr(addr)
+			if err != nil {
+				panic(err)
+			}
+			multiAddrs = append(multiAddrs, relayMultiaddr)
 		}
-		multiAddrs = append(multiAddrs, relayMultiaddr)
+	} else {
+		for _, addr := range RelayAddrs {
+			relayMultiaddr, err := ma.NewMultiaddr(addr)
+			if err != nil {
+				panic(err)
+			}
+			multiAddrs = append(multiAddrs, relayMultiaddr)
+		}
 	}
 
 	return multiAddrs
 }
 
-func GetBootstrapIDs() []peer.ID {
+func GetBootstrapIDs(peerType string) []peer.ID {
 	lock.Lock()
 	defer lock.Unlock()
 
 	var ids []peer.ID
-	for _, relayId := range RelayIds {
-		id, err := peer.Decode(relayId)
-		if err != nil {
-			panic(err)
+	if peerType == "Validator" {
+		for _, relayId := range RelayIdsVal {
+			id, err := peer.Decode(relayId)
+			if err != nil {
+				panic(err)
+			}
+			ids = append(ids, id)
 		}
-		ids = append(ids, id)
+	} else {
+		for _, relayId := range RelayIds {
+			id, err := peer.Decode(relayId)
+			if err != nil {
+				panic(err)
+			}
+			ids = append(ids, id)
+		}
 	}
 
 	return ids
 }
 
-func GetBootstrapIDAddresses(peerID peer.ID) []ma.Multiaddr {
+func GetBootstrapIDAddresses(peerID peer.ID, peerType string) []ma.Multiaddr {
 	lock.Lock()
 	defer lock.Unlock()
 
 	var multiAddrs []ma.Multiaddr
-	for i, relayId := range RelayIds {
-		id, err := peer.Decode(relayId)
-		if err != nil {
-			panic(err)
-		}
-		if id == peerID {
-			relayMultiaddr, err := ma.NewMultiaddr(RelayAddrs[i])
+
+	if peerType == "Validator" {
+		for i, relayId := range RelayIdsVal {
+			id, err := peer.Decode(relayId)
 			if err != nil {
 				panic(err)
 			}
-			multiAddrs = append(multiAddrs, relayMultiaddr)
+			if id == peerID {
+				relayMultiaddrVal, err := ma.NewMultiaddr(RelayAddrsVal[i])
+				if err != nil {
+					panic(err)
+				}
+				multiAddrs = append(multiAddrs, relayMultiaddrVal)
+			}
+		}
+	} else {
+		for i, relayId := range RelayIds {
+			id, err := peer.Decode(relayId)
+			if err != nil {
+				panic(err)
+			}
+			if id == peerID {
+				relayMultiaddr, err := ma.NewMultiaddr(RelayAddrs[i])
+				if err != nil {
+					panic(err)
+				}
+				multiAddrs = append(multiAddrs, relayMultiaddr)
+			}
 		}
 	}
 

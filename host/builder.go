@@ -97,7 +97,7 @@ func BuildNamedHost(priv_key crypto.PrivKey) core.Host {
 	var listenAddrs libp2p.Option
 
 	// set port if we are bootstrap
-	for _, addr := range conf.GetBootstrapIDAddresses(myId) {
+	for _, addr := range conf.GetBootstrapIDAddresses(myId, "Normal") {
 		listenAddrs = libp2p.ListenAddrs(addr)
 	}
 	if listenAddrs == nil {
