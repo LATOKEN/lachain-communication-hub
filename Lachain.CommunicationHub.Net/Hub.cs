@@ -15,6 +15,9 @@ namespace Lachain.CommunicationHub.Net
         internal readonly Lazy<HubGetKey> HubGetKey;
         internal readonly Lazy<StartProfiler> StartProfiler;
         internal readonly Lazy<HubGenerateNewKey> GenerateNewKeyHub;
+        internal readonly Lazy<HubSendMessageVal> SendMessageToValPeer;
+        internal readonly Lazy<HubValidatorConnect> ConnectValidatorChannel;
+
 
 
         const string Lib = "hub";
@@ -36,6 +39,9 @@ namespace Lachain.CommunicationHub.Net
             HubGetKey = LazyDelegate<HubGetKey>();
             StartProfiler = LazyDelegate<StartProfiler>();
             GenerateNewKeyHub = LazyDelegate<HubGenerateNewKey>();
+            SendMessageToValPeer = LazyDelegate<HubSendMessageVal>();
+            ConnectValidatorChannel = LazyDelegate<HubValidatorConnect>();
+
         }
 
         Lazy<TDelegate> LazyDelegate<TDelegate>()
@@ -149,6 +155,23 @@ namespace Lachain.CommunicationHub.Net
                     Imports.SendMessage.Value(publicKeyPtr, publicKey.Length, dataPtr, data.Length);
                 }
             }
+        }
+
+        public static void SendVal(byte[] publicKey, byte[] data)
+        {
+            unsafe
+            {
+                fixed (byte* publicKeyPtr = publicKey)
+                fixed (byte* dataPtr = data)
+                {
+                    Imports.SendMessageToValPeer.Value(publicKeyPtr, publicKey.Length, dataPtr, data.Length);
+                }
+            }
+        }
+        
+        public static void Stop()
+        {
+            Imports.ConnectValidatorChannel.Value();
         }
 
         public static void Stop()
