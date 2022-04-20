@@ -283,11 +283,19 @@ func (peerService *PeerService) SetSignatureVal() bool {
 	return true
 }
 
-func (peerService *PeerService) AvailableRelays() []peer.ID {
+func (peerService *PeerService) AvailableRelays(ptype string) []peer.ID {
 	peerService.lock()
 	defer peerService.unlock()
 	var result []peer.ID
-	for _, conn := range peerService.connections {
+
+	var connections map[string]*connection.Connection
+
+	if ptype == "Validator" {
+		connections = peerService.valConnections
+	} else {
+		connections = peerService.connections
+	}
+	for _, conn := range connections {
 		if conn.IsActive() && conn.PeerAddress != nil {
 			result = append(result, conn.PeerId)
 		}
@@ -295,23 +303,31 @@ func (peerService *PeerService) AvailableRelays() []peer.ID {
 	return result
 }
 
-func (peerService *PeerService) AvailableValRelays() []peer.ID {
-	peerService.lock()
-	defer peerService.unlock()
-	var result []peer.ID
-	for _, conn := range peerService.valConnections {
-		if conn.IsActive() && conn.PeerAddress != nil {
-			result = append(result, conn.PeerId)
-		}
-	}
-	return result
-}
+// func (peerService *PeerService) AvailableValRelays() []peer.ID {
+// 	peerService.lock()
+// 	defer peerService.unlock()
+// 	var result []peer.ID
+// 	for _, conn := range peerService.valConnections {
+// 		if conn.IsActive() && conn.PeerAddress != nil {
+// 			result = append(result, conn.PeerId)
+// 		}
+// 	}
+// 	return result
+// }
 
-func (peerService *PeerService) GetPeers() []*connection.Metadata {
+func (peerService *PeerService) GetPeers(ptype string) []*connection.Metadata {
 	peerService.lock()
 	defer peerService.unlock()
 	var result []*connection.Metadata
-	for _, conn := range peerService.connections {
+
+	var connections map[string]*connection.Connection
+	if ptype == "Validator" {
+		connections = peerService.valConnections
+	} else {
+		connections = peerService.connections
+	}
+
+	for _, conn := range connections {
 		if conn.IsActive() {
 			result = append(result, &connection.Metadata{
 				PublicKey: conn.PeerPublicKey,
@@ -324,25 +340,33 @@ func (peerService *PeerService) GetPeers() []*connection.Metadata {
 	return result
 }
 
-func (peerService *PeerService) GetValPeers() []*connection.Metadata {
-	peerService.lock()
-	defer peerService.unlock()
-	var result []*connection.Metadata
-	for _, conn := range peerService.valConnections {
-		if conn.IsActive() {
-			result = append(result, &connection.Metadata{
-				PublicKey: conn.PeerPublicKey,
-				Id:        conn.PeerId,
-				LastSeen:  0, // TODO: restore last seen mechanism
-				Addr:      conn.PeerAddress,
-			})
-		}
-	}
-	return result
-}
+// func (peerService *PeerService) GetValPeers() []*connection.Metadata {
+// 	peerService.lock()
+// 	defer peerService.unlock()
+// 	var result []*connection.Metadata
+// 	for _, conn := range peerService.valConnections {
+// 		if conn.IsActive() {
+// 			result = append(result, &connection.Metadata{
+// 				PublicKey: conn.PeerPublicKey,
+// 				Id:        conn.PeerId,
+// 				LastSeen:  0, // TODO: restore last seen mechanism
+// 				Addr:      conn.PeerAddress,
+// 			})
+// 		}
+// 	}
+// 	return result
+// }
 
-func (peerService *PeerService) connectionByPublicKey(publicKey string) *connection.Connection {
-	for _, conn := range peerService.connections {
+func (peerService *PeerService) connectionByPublicKey(publicKey string, ptype string) *connection.Connection {
+
+	var connections map[string]*connection.Connection
+	if ptype == "Validator" {
+		connections = peerService.valConnections
+	} else {
+		connections = peerService.connections
+	}
+
+	for _, conn := range connections {
 		if conn.PeerPublicKey == publicKey {
 			return conn
 		}
@@ -350,47 +374,55 @@ func (peerService *PeerService) connectionByPublicKey(publicKey string) *connect
 	return nil
 }
 
-func (peerService *PeerService) connectionByValPublicKey(publicKey string) *connection.Connection {
-	for _, conn := range peerService.valConnections {
-		if conn.PeerPublicKey == publicKey {
-			return conn
-		}
-	}
-	return nil
-}
+// func (peerService *PeerService) connectionByValPublicKey(publicKey string) *connection.Connection {
+// 	for _, conn := range peerService.valConnections {
+// 		if conn.PeerPublicKey == publicKey {
+// 			return conn
+// 		}
+// 	}
+// 	return nil
+// }
 
-func (peerService *PeerService) SendMessageToPeer(publicKey string, msg []byte) bool {
+func (peerService *PeerService) SendMessageToPeer(publicKey string, msg []byte, ptype string) bool {
 	peerService.lock()
 	defer peerService.unlock()
 
-	if conn := peerService.connectionByPublicKey(publicKey); conn != nil {
+	if conn := peerService.connectionByPublicKey(publicKey, ptype); conn != nil {
 		//log.Tracef("Sending message to peer %v message length %d", conn.PeerId.Pretty(), len(msg))
 		conn.Send(msg)
 		return true
 	}
 	log.Tracef("Postponed message to peer %v message length %d", publicKey, len(msg))
-	peerService.storeMessage(publicKey, msg)
+	peerService.storeMessage(publicKey, msg, ptype)
 	return false
 }
 
-func (peerService *PeerService) SendMessageToValPeer(publicKey string, msg []byte) bool {
+// func (peerService *PeerService) SendMessageToValPeer(publicKey string, msg []byte) bool {
+// 	peerService.lock()
+// 	defer peerService.unlock()
+
+// 	if conn := peerService.connectionByValPublicKey(publicKey); conn != nil {
+// 		//log.Tracef("Sending message to peer %v message length %d", conn.PeerId.Pretty(), len(msg))
+// 		conn.Send(msg)
+// 		return true
+// 	}
+// 	log.Tracef("Postponed message to peer %v message length %d", publicKey, len(msg))
+// 	peerService.storeMessageVal(publicKey, msg)
+// 	return false
+// }
+
+func (peerService *PeerService) BroadcastMessage(msg []byte, ptype string) {
 	peerService.lock()
 	defer peerService.unlock()
 
-	if conn := peerService.connectionByValPublicKey(publicKey); conn != nil {
-		//log.Tracef("Sending message to peer %v message length %d", conn.PeerId.Pretty(), len(msg))
-		conn.Send(msg)
-		return true
+	var connections map[string]*connection.Connection
+	if ptype == "Validator" {
+		connections = peerService.valConnections
+	} else {
+		connections = peerService.connections
 	}
-	log.Tracef("Postponed message to peer %v message length %d", publicKey, len(msg))
-	peerService.storeMessageVal(publicKey, msg)
-	return false
-}
 
-func (peerService *PeerService) BroadcastMessage(msg []byte) {
-	peerService.lock()
-	defer peerService.unlock()
-	for _, conn := range peerService.connections {
+	for _, conn := range connections {
 		if !conn.IsActive() && len(conn.PeerPublicKey) > 0 {
 			continue
 		}
@@ -399,17 +431,17 @@ func (peerService *PeerService) BroadcastMessage(msg []byte) {
 	}
 }
 
-func (peerService *PeerService) BroadcastValMessage(msg []byte) {
-	peerService.lock()
-	defer peerService.unlock()
-	for _, conn := range peerService.valConnections {
-		if !conn.IsActive() && len(conn.PeerPublicKey) > 0 {
-			continue
-		}
-		log.Tracef("Broadcasting to active validator peer %v (%v)", conn.PeerPublicKey, conn.PeerId.Pretty())
-		conn.Send(msg)
-	}
-}
+// func (peerService *PeerService) BroadcastValMessage(msg []byte) {
+// 	peerService.lock()
+// 	defer peerService.unlock()
+// 	for _, conn := range peerService.valConnections {
+// 		if !conn.IsActive() && len(conn.PeerPublicKey) > 0 {
+// 			continue
+// 		}
+// 		log.Tracef("Broadcasting to active validator peer %v (%v)", conn.PeerPublicKey, conn.PeerId.Pretty())
+// 		conn.Send(msg)
+// 	}
+// }
 
 func (peerService *PeerService) GetId() []byte {
 	if peerService.host == nil {
@@ -468,6 +500,11 @@ func (peerService *PeerService) Stop() {
 		log.Debugf("Connection terminated %v", pubKey)
 	}
 	peerService.connections = nil
+	for pubKey, conn := range peerService.valConnections {
+		conn.Terminate()
+		log.Debugf("Connection terminated %v", pubKey)
+	}
+	peerService.valConnections = nil
 	if err := peerService.host.ConnManager().Close(); err != nil {
 		panic(err)
 	}
@@ -489,18 +526,18 @@ func (peerService *PeerService) Stop() {
 	log.Debugf("Closed host")
 }
 
-func (peerService *PeerService) storeMessage(key string, msg []byte) {
-	if conn := peerService.connectionByPublicKey(key); conn != nil {
+func (peerService *PeerService) storeMessage(key string, msg []byte, ptype string) {
+	if conn := peerService.connectionByPublicKey(key, ptype); conn != nil {
 		conn.Send(msg)
 	} else {
 		peerService.messages[key] = append(peerService.messages[key], msg)
 	}
 }
 
-func (peerService *PeerService) storeMessageVal(key string, msg []byte) {
-	if conn := peerService.connectionByValPublicKey(key); conn != nil {
-		conn.Send(msg)
-	} else {
-		peerService.messages[key] = append(peerService.messages[key], msg)
-	}
-}
+// func (peerService *PeerService) storeMessageVal(key string, msg []byte) {
+// 	if conn := peerService.connectionByValPublicKey(key); conn != nil {
+// 		conn.Send(msg)
+// 	} else {
+// 		peerService.messages[key] = append(peerService.messages[key], msg)
+// 	}
+// }
