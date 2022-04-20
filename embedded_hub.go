@@ -149,6 +149,29 @@ func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Point
 	}
 }
 
+//export SendMessageToValPeer
+func SendMessageToValPeer(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Pointer, dataLen C.int) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	pubKey := C.GoBytes(pubKeyPtr, pubKeyLen)
+	data := C.GoBytes(dataPtr, dataLen)
+	//log.Tracef("SendMessage command to send %d bytes to %s", dataLen, hex.EncodeToString(pubKey))
+
+	if bytes.Equal(pubKey, ZeroPub) {
+		localPeer.BroadcastValMessage(data)
+	} else {
+		pub := hex.EncodeToString(pubKey)
+		localPeer.SendMessageToValPeer(pub, data)
+	}
+}
+
+func ConnectValidatorChannel() {
+	mutex.Lock()
+	defer mutex.Unlock()
+	fmt.Println("Connecting peer to validator channel")
+	localPeer.ConnectValidatorChannel()
+}
+
 //export LogLevel
 func LogLevel(s *C.char, len C.int) {
 	mutex.Lock()
