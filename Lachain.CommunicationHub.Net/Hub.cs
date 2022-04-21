@@ -169,7 +169,7 @@ namespace Lachain.CommunicationHub.Net
             }
         }
         
-        public static void Stop()
+        public static void ConnectVal()
         {
             Imports.ConnectValidatorChannel.Value();
         }
