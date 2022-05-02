@@ -84,3 +84,7 @@ jobs:
       draft: true
       on:
         tags: false
+      branches:
+        only:
+          - travis_dotnet_F
+
