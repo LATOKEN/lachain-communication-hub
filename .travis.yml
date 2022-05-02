@@ -79,7 +79,8 @@ jobs:
       file_glob: true
       file:
       - Lachain.CommunicationHub.NativeLib*nupkg
-      - bin/*
+      - Lachain.CommunicationHub.Net/bin/Debug/Lachain.CommunicationHub.Net*.nupkg
+      - Dockerfile
       skip_cleanup: true
       draft: true
       on:
