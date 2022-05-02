@@ -83,4 +83,4 @@ jobs:
       skip_cleanup: true
       draft: true
       on:
-        tags: true
+        tags: false
