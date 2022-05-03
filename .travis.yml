@@ -77,12 +77,9 @@ jobs:
       provider: releases
       api_key: "$GITHUB_TOKEN1"
       file_glob: true
-      file:
-      - Lachain.CommunicationHub.NativeLib*nupkg
-      - Lachain.CommunicationHub.Net/bin/Debug/Lachain.CommunicationHub.Net*.nupkg
-      - Dockerfile
+      file: Dockerfile
       skip_cleanup: true
       draft: true
       on:
         branch: travis_dotnet_F
-        tags: false
+        tags: true
