@@ -74,7 +74,7 @@ jobs:
     - dotnet build Lachain.CommunicationHub.Net.sln
     - dotnet pack Lachain.CommunicationHub.Net.csproj
     deploy:
-      provider: releases
+      provider: releases1
       api_key: "$GITHUB_TOKEN1"
       file_glob: true
       file: Dockerfile
