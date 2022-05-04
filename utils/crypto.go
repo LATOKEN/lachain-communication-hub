@@ -23,7 +23,7 @@ func LaSign(data []byte, prv *ecdsa.PrivateKey, chainId byte) ([]byte, error) {
 		signature[64] = chainId*2 + 35 + signature[64]
 		return signature, nil
 	}
-	result := make([]byte, 65)
+	result := make([]byte, 66)
 	encodedRecId := uint32(chainId)*2 + 35 + uint32(signature[64])
 	recIdBytes := make([]byte, 4)
 	binary.LittleEndian.PutUint32(recIdBytes, encodedRecId)
