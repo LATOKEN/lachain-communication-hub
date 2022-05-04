@@ -35,7 +35,7 @@ func LaSign(data []byte, prv *ecdsa.PrivateKey, chainId byte) ([]byte, error) {
 }
 
 func recoverEncodedRecIdFromSignature(sig []byte) (int, error) {
-	if len(sig) != 65 || len(sig) != 66 {
+	if len(sig) != 65 && len(sig) != 66 {
 		return -1, fmt.Errorf("signature must be 65 bytes long")
 	}
 	if len(sig) == 65 {
@@ -49,7 +49,7 @@ func recoverEncodedRecIdFromSignature(sig []byte) (int, error) {
 
 func EcRecover(data, sig []byte, chainId byte) (*ecdsa.PublicKey, error) {
 	dataHash := crypto.Keccak256(data)
-	if len(sig) != 65 || len(sig) != 66 {
+	if len(sig) != 65 && len(sig) != 66 {
 		return nil, fmt.Errorf("signature must be 65 bytes long")
 	}
 	recSig := make([]byte, 65)
