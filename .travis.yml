@@ -77,7 +77,7 @@ jobs:
       provider: releases
       api_key: "$GITHUB_TOKEN1"
       file_glob: true
-      file: Lachain.CommunicationHub.Net/*
+      file: bin/*
       skip_cleanup: true
       draft: true
       on:
