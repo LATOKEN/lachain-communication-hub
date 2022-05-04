@@ -27,7 +27,7 @@ func LaSign(data []byte, prv *ecdsa.PrivateKey, chainId byte) ([]byte, error) {
 	encodedRecId := uint32(chainId)*2 + 35 + uint32(signature[64])
 	recIdBytes := make([]byte, 4)
 	binary.LittleEndian.PutUint32(recIdBytes, encodedRecId)
-	copy(result[0:63], signature[0:63])
+	copy(result[0:64], signature[0:64])
 	// only 2 first bytes contains non-zero value because chainId is byte, so it is less than 256
 	result[64] = recIdBytes[1]
 	result[65] = recIdBytes[0]
