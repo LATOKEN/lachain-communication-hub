@@ -26,7 +26,7 @@ func LaSign(data []byte, prv *ecdsa.PrivateKey, chainId byte) ([]byte, error) {
 	result := make([]byte, 65)
 	encodedRecId := uint32(chainId)*2 + 35 + uint32(signature[64])
 	recIdBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(recIdBytes, encodedRecId)
+	binary.LittleEndian.PutUint32(recIdBytes, encodedRecId)
 	copy(result[0:63], signature[0:63])
 	// only 2 first bytes contains non-zero value because chainId is byte, so it is less than 256
 	result[64] = recIdBytes[1]
@@ -44,7 +44,7 @@ func recoverEncodedRecIdFromSignature(sig []byte) (int, error) {
 	slice := make([]byte, 4)
 	slice[0] = sig[65]
 	slice[1] = sig[64]
-	return int(binary.BigEndian.Uint32(slice)), nil
+	return int(binary.LittleEndian.Uint32(slice)), nil
 }
 
 func EcRecover(data, sig []byte, chainId byte) (*ecdsa.PublicKey, error) {
