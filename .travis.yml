@@ -83,5 +83,5 @@ jobs:
       skip_cleanup: true
       draft: true
       on:
-        branch: travis_dotnet_F
+        all_branches: true
         tags: false
