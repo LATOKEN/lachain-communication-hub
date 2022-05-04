@@ -77,9 +77,11 @@ jobs:
       provider: releases
       api_key: "$GITHUB_TOKEN1"
       file_glob: true
-      file: bin/*
+      file:
+      - bin/Debug/Lachain.CommunicationHub.Net.0.0.*.nupkg
+      - ../Lachain.CommunicationHub.Native.0.0.*.nupkg
       skip_cleanup: true
       draft: true
       on:
         branch: travis_dotnet_F
-        tags: true
+        tags: false
