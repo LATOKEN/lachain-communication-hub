@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
   <metadata>
     <id>Lachain.CommunicationHub.Native</id>
-    <version>0.0.73</version>
+    <version>0.0.74</version>
     <authors>LACHAIN</authors>
     <owners>LACHAIN</owners>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
