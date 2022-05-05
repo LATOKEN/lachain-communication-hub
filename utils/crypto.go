@@ -50,7 +50,7 @@ func recoverEncodedRecIdFromSignature(sig []byte) (int, error) {
 func EcRecover(data, sig []byte, chainId byte) (*ecdsa.PublicKey, error) {
 	dataHash := crypto.Keccak256(data)
 	if len(sig) != 65 && len(sig) != 66 {
-		return nil, fmt.Errorf("signature must be 65 bytes long")
+		return nil, fmt.Errorf("signature must be 65 or 66 bytes long")
 	}
 	recSig := make([]byte, 65)
 	copy(recSig, sig[0:64])
