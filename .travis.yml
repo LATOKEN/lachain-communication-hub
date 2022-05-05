@@ -78,7 +78,7 @@ jobs:
       api_key: "$GITHUB_TOKEN1"
       file_glob: true
       file:
-      - Lachain.CommunicationHub.Native.*nupkg
+        - ../Lachain.CommunicationHub.Native.*nupkg
       - bin/Debug/Lachain.CommunicationHub.Net*.nupkg
       skip_cleanup: true
       draft: true
