@@ -69,7 +69,7 @@ jobs:
     - mv /home/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/linux-x64
       lib
     - nuget pack Lachain.CommunicationHub.Native.nuspec
-    - dotnet nuget push Lachain.CommunicationHub.NativeLib.*.nupkg -k $NUGETKEY -s https://api.nuget.org/v3/index.json --timeout 600 --skip-duplicate
+    - dotnet nuget push Lachain.CommunicationHub.Native.*.nupkg -k $NUGETKEY -s https://api.nuget.org/v3/index.json --timeout 600 --skip-duplicate
     - cd Lachain.CommunicationHub.Net/
     - dotnet build Lachain.CommunicationHub.Net.sln
     - dotnet pack Lachain.CommunicationHub.Net.csproj
@@ -78,7 +78,7 @@ jobs:
       api_key: "$GITHUB_TOKEN"
       file_glob: true
       file:
-      - Lachain.CommunicationHub.NativeLib*nupkg
+      - Lachain.CommunicationHub.Native*nupkg
       - bin/Debug/Lachain.CommunicationHub.Net*.nupkg
       skip_cleanup: true
       draft: true
