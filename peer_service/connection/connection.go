@@ -308,7 +308,11 @@ func (connection *Connection) sendSignature() {
 	backoff := time.Second
 	for connection.status.Load() != Terminated {
 		if connection.outboundStream != nil {
-			if len(connection.signature) != 65 {
+			sigLen := 65
+			if config.ChainId >= 110 {
+				sigLen = 66
+			}
+			if len(connection.signature) != sigLen {
 				panic("bad signature length!")
 			}
 			var payload []byte
@@ -346,7 +350,11 @@ func (connection *Connection) handleSignature(data []byte) {
 	if connection.status.Load() == Terminated {
 		return
 	}
-	signature, addressBytes := data[:65], data[65:]
+	sigLen := 65
+	if config.ChainId >= 110 {
+		sigLen = 66
+	}
+	signature, addressBytes := data[:sigLen], data[sigLen:]
 	peerIdBytes, err := connection.PeerId.Marshal()
 	if err != nil {
 		log.Errorf("Cannot create payload for signature check fr7om peer %v: %v", connection.PeerId.Pretty(), err)
