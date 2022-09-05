@@ -118,6 +118,14 @@ func (peerService *PeerService) ConnectValidatorChannel() {
 	}
 }
 
+func (peerService *PeerService) DisconnectValidatorChannel() {
+	for pubKey, conn := range peerService.valConnections {
+		conn.Terminate()
+		log.Debugf("Connection terminated %v", pubKey)
+	}
+	peerService.valConnections = nil
+}
+
 func (peerService *PeerService) connectVal(id peer.ID, address ma.Multiaddr) {
 	if id == peerService.host.ID() {
 		return
@@ -468,6 +476,12 @@ func (peerService *PeerService) Stop() {
 		log.Debugf("Connection terminated %v", pubKey)
 	}
 	peerService.connections = nil
+
+	for pubKey, conn := range peerService.valConnections {
+		conn.Terminate()
+		log.Debugf("Connection terminated %v", pubKey)
+	}
+	peerService.valConnections = nil
 	if err := peerService.host.ConnManager().Close(); err != nil {
 		panic(err)
 	}

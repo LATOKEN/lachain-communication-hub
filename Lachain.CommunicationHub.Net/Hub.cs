@@ -17,6 +17,7 @@ namespace Lachain.CommunicationHub.Net
         internal readonly Lazy<HubGenerateNewKey> GenerateNewKeyHub;
         internal readonly Lazy<HubSendMessageVal> SendMessageToValPeer;
         internal readonly Lazy<HubValidatorConnect> ConnectValidatorChannel;
+        internal readonly Lazy<HubValidatorDisconnect> DisconnectValidatorChannel;
 
 
 
@@ -41,6 +42,7 @@ namespace Lachain.CommunicationHub.Net
             GenerateNewKeyHub = LazyDelegate<HubGenerateNewKey>();
             SendMessageToValPeer = LazyDelegate<HubSendMessageVal>();
             ConnectValidatorChannel = LazyDelegate<HubValidatorConnect>();
+            DisconnectValidatorChannel = LazyDelegate<HubValidatorDisconnect>();
 
         }
 
@@ -172,6 +174,11 @@ namespace Lachain.CommunicationHub.Net
         public static void ConnectVal()
         {
             Imports.ConnectValidatorChannel.Value();
+        }
+
+        public static void DisconnectVal()
+        {
+            Imports.DisconnectValidatorChannel.Value();
         }
 
         public static void Stop()

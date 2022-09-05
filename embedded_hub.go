@@ -172,6 +172,13 @@ func ConnectValidatorChannel() {
 	localPeer.ConnectValidatorChannel()
 }
 
+func DisconnectValidatorChannel() {
+	mutex.Lock()
+	defer mutex.Unlock()
+	fmt.Println("Connecting peer to validator channel")
+	localPeer.DisconnectValidatorChannel()
+}
+
 //export LogLevel
 func LogLevel(s *C.char, len C.int) {
 	mutex.Lock()
