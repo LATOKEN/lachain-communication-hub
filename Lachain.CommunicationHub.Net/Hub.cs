@@ -102,6 +102,7 @@ namespace Lachain.CommunicationHub.Net
 
         public static byte[][] Get()
         {
+            Console.WriteLine("Reading message");
             while (true)
             {
                 int result;
