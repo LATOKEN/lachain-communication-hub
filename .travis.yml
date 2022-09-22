@@ -1,88 +1,87 @@
 sudo: required
 jobs:
   include:
-    - stage: Build
-      os: linux
-      language: go
-      go: 1.17.3
-      script:
-        - go get -d -v ./...
-        - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
-      workspaces:
-        create:
-          name: bin_linux
-          paths: 
-            - lib/linux-x64
-
-    - stage: Build
-      os: osx
-      language: go
-      go: 1.17.3
-      script:
-        - go get -d -v ./...
-        - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
-      workspaces:
-        create:
-          name: bin_osx
-          paths: 
-            - lib/osx-x64
-    
-    - stage: Build
-      os: windows
-      language: go
-      go: 1.17.3
-      script:
-        - go get -d -v ./...
-        - go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
-      workspaces:
-        create:
-          name: bin_win
-          paths: 
-            - lib/win-x64
-
-    - stage: Nuget_build
-      language: csharp
-      dotnet: 5.0
-      mono: none
-      dist: focal
-      addons:
-        apt:
-          packages:
-            - dotnet-sdk-3.1
-            - nuget
-      workspaces: 
-        use:
-          - bin_linux
-          - bin_osx
-          - bin_win
-      env:
-        global:
-          - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
-          - DOTNET_CLI_TELEMETRY_OPTOUT=1
-      install:
-        - dotnet restore Lachain.CommunicationHub.Net
-        - dotnet build -c Release Lachain.CommunicationHub.Net
-      script:
-        - tar -xvf ${TRAVIS_HOME}/.casher/bin_osx-fetch.tgz
-        - mv Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib .
-        - mv C:/Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/win-x64 lib
-        - mv lib/win-x64/libhub.dll lib/win-x64/hub.dll
-        - mv /home/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/linux-x64 lib
-        - nuget pack Lachain.CommunicationHub.Native.nuspec
-        - cd Lachain.CommunicationHub.Net/
-        - dotnet build Lachain.CommunicationHub.Net.sln
-        - dotnet pack Lachain.CommunicationHub.Net.csproj
-
-      deploy:
-        provider: releases
-        api_key:
-          secure: "DVFbA0GJkJrkLyOTaKPm+zFVnCJFsUSGaC31wtOQTQnlnuTjGZKVHNP+17DYKCUOh6t+vyd0JJIc0D0ujF8CyNbGuBkQe40C9ih4rRS6wjobTSfgfglE9CQ36SFerQV2XNWhEGj2HnqA37HPQ8BxQwbp1OwtTwZ9kaeess8d9JUVsw3YcVPPEevsNHIzKo+rE3lckLLSKv15TtF9wUhBwpgse+MK49ISqCi6ahRRlK8QYgXCzwxaXvmWh3SYIc00HgeXb+1Jfsp6w/8JOEqTlJ4SbXOZN/Jj8uhAGq8FkJC8YhtEs0Irbepaf6NblNgq/O8YDlQ8U1yiU7AgTvlEx5DVaRy3ZR54NfAcHpiXq9LO9XdarmvtrEZ3q/uDPGGMYZhK6RLQSBWfptld5cwJc6GWLyGVx2cPZvTGYOHNhks6q3Mgvpru1h65blqgJz3fNv8C5aqDcYdBCe/UhqEsE+YYHxQY5tgIP8vO3Zb3IFgMEh0BlKvv/MfY7mOOCQx7gOQBk5SQvamfnbi+oSr1xIJJEZN8nqSgnfuKNABc0o6syoqG5OwlHoLQ/mC6dq0+j4iwGhbAWus4nyM29Bp0XLCgUrxuaLNoDejbSnAG3Bx/8gdwC+dtjzMjRfwmr0tzLbgmqZaBpAgfyvLctJUTub+bzpDNpdniL3ByJOWH8xE="
-        file_glob: true
-        file: 
-          - Lachain.CommunicationHub.NativeLib*nupkg
-          - bin/Debug/Lachain.CommunicationHub.Net*.nupkg
-        skip_cleanup: true
-        draft: true
-        on:
-          tags: true
-          all_branches: true
+  - stage: Build
+    os: linux
+    language: go
+    go: 1.17.3
+    script:
+    - go get -d -v ./...
+    - go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
+    workspaces:
+      create:
+        name: bin_linux
+        paths:
+        - lib/linux-x64
+  - stage: Build
+    os: osx
+    language: go
+    go: 1.17.3
+    script:
+    - go get -d -v ./...
+    - go build -o lib/osx-x64/libhub.dylib -buildmode=c-shared embedded_hub.go
+    workspaces:
+      create:
+        name: bin_osx
+        paths:
+        - lib/osx-x64
+  - stage: Build
+    os: windows
+    language: go
+    go: 1.17.3
+    script:
+    - go get -d -v ./...
+    - go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
+    workspaces:
+      create:
+        name: bin_win
+        paths:
+        - lib/win-x64
+  - stage: Nuget_build
+    language: csharp
+    dotnet: 5.0
+    mono: none
+    dist: focal
+    addons:
+      apt:
+        packages:
+        - dotnet-sdk-3.1
+        - nuget
+    workspaces:
+      use:
+      - bin_linux
+      - bin_osx
+      - bin_win
+    env:
+      global:
+      - DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
+      - DOTNET_CLI_TELEMETRY_OPTOUT=1
+    install:
+    - dotnet restore Lachain.CommunicationHub.Net
+    - dotnet build -c Release Lachain.CommunicationHub.Net
+    script:
+    - tar -xvf ${TRAVIS_HOME}/.casher/bin_osx-fetch.tgz
+    - mv Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib
+      .
+    - mv C:/Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/win-x64
+      lib
+    - mv lib/win-x64/libhub.dll lib/win-x64/hub.dll
+    - mv /home/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/linux-x64
+      lib
+    - nuget pack Lachain.CommunicationHub.Native.nuspec
+    - dotnet nuget push Lachain.CommunicationHub.Native.*.nupkg -k $NUGETKEY -s https://api.nuget.org/v3/index.json --timeout 600 --skip-duplicate
+    - cd Lachain.CommunicationHub.Net/
+    - dotnet build Lachain.CommunicationHub.Net.sln
+    - dotnet pack Lachain.CommunicationHub.Net.csproj
+    deploy:
+      provider: releases
+      api_key: "$GITHUB_TOKEN1"
+      file_glob: true
+      file:
+      - ../Lachain.CommunicationHub.Native.*nupkg
+      - bin/Debug/Lachain.CommunicationHub.Net*.nupkg
+      skip_cleanup: true
+      draft: true
+      on:
+        tags: true
+        all_branches: true
