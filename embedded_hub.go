@@ -165,17 +165,19 @@ func SendMessageToValPeer(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr uns
 	}
 }
 
+//export ConnectValidatorChannel
 func ConnectValidatorChannel() {
 	mutex.Lock()
 	defer mutex.Unlock()
-	fmt.Println("Connecting peer to validator channel")
+	log.Tracef("Connecting peer to validator channel")
 	localPeer.ConnectValidatorChannel()
 }
 
+//export DisconnectValidatorChannel
 func DisconnectValidatorChannel() {
 	mutex.Lock()
 	defer mutex.Unlock()
-	fmt.Println("Connecting peer to validator channel")
+	log.Tracef("Disconnecting peer from validator channel")
 	localPeer.DisconnectValidatorChannel()
 }
 
