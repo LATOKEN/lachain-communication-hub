@@ -75,6 +75,7 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	for i, bootstrapId := range config.GetBootstrapIDs("Normal") {
 		peerService.connect(bootstrapId, mAddrs[i])
 	}
+	log.Infof("peer service: %v", peerService)
 	return peerService
 }
 
