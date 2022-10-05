@@ -20,10 +20,10 @@
       <Visible>true</Visible>
       <Pack>false</Pack>
     </Content>
-    <Content Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\libhub.dll">
+    <Content Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\hub.dll">
       <PackageCopyToOutput>true</PackageCopyToOutput>
       <CopyToOutputDirectory Condition="'$(RuntimeIdentifier)'=='win-x64'">PreserveNewest</CopyToOutputDirectory>
-      <Link>native\win-x64\libhub.dll</Link>
+      <Link>native\win-x64\hub.dll</Link>
       <Visible>true</Visible>
       <Pack>false</Pack>
     </Content>

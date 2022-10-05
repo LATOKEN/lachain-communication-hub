@@ -8,17 +8,17 @@ cd $SRC_PATH
 rm -r ./lib
 
 go get -d -v ./...
-go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
+go build -o lib/win-x64/hub.dll -buildmode=c-shared embedded_hub.go
 
 cd ./lib
 
 mkdir -p ./linux-x64
-cp ./win-x64/libhub.dll ./linux-x64/libhub.so
-cp ./win-x64/libhub.h ./linux-x64/libhub.h
+cp ./win-x64/hub.dll ./linux-x64/libhub.so
+cp ./win-x64/hub.h ./linux-x64/libhub.h
 
 mkdir -p ./osx-x64
-cp ./win-x64/libhub.dll ./osx-x64/libhub.dylib
-cp ./win-x64/libhub.h ./osx-x64/libhub.h
+cp ./win-x64/hub.dll ./osx-x64/libhub.dylib
+cp ./win-x64/hub.h ./osx-x64/libhub.h
 
 cd ..
 

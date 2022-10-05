@@ -31,7 +31,7 @@ jobs:
     go: 1.17.3
     script:
     - go get -d -v ./...
-    - go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
+    - go build -o lib/win-x64/hub.dll -buildmode=c-shared embedded_hub.go
     workspaces:
       create:
         name: bin_win

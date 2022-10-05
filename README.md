@@ -15,7 +15,7 @@ go build -o lib/linux-x64/libhub.so -buildmode=c-shared embedded_hub.go
 Windows:
 
 ```
-go build -o lib/win-x64/libhub.dll -buildmode=c-shared embedded_hub.go
+go build -o lib/win-x64/hub.dll -buildmode=c-shared embedded_hub.go
 ```
 
 MacOS:
