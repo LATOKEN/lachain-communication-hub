@@ -166,11 +166,13 @@ func SendMessageToValPeer(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr uns
 }
 
 //export ConnectValidatorChannel
-func ConnectValidatorChannel() {
+func ConnectValidatorChannel(pubKeyPtr unsafe.Pointer, pubKeyLen C.int) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	log.Tracef("Connecting peer to validator channel")
-	localPeer.ConnectValidatorChannel()
+	pubKey := C.GoBytes(pubKeyPtr, pubKeyLen)
+	pub := hex.EncodeToString(pubKey)
+	localPeer.ConnectValidatorChannel(pub)
 }
 
 //export DisconnectValidatorChannel

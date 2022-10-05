@@ -65,7 +65,6 @@ jobs:
       .
     - mv C:/Users/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/win-x64
       lib
-    - mv lib/win-x64/libhub.dll lib/win-x64/hub.dll
     - mv /home/travis/gopath/src/github.com/LATOKEN/lachain-communication-hub/lib/linux-x64
       lib
     - nuget pack Lachain.CommunicationHub.Native.nuspec

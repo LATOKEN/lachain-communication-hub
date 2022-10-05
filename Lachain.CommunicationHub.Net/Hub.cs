@@ -171,9 +171,15 @@ namespace Lachain.CommunicationHub.Net
             }
         }
         
-        public static void ConnectVal()
+        public static void ConnectVal(byte[] publicKey)
         {
-            Imports.ConnectValidatorChannel.Value();
+            unsafe
+            {
+                fixed (byte* publicKeyPtr = publicKey)
+                {
+                    Imports.ConnectValidatorChannel.Value(publicKeyPtr, publicKey.Length);
+                }
+            }
         }
 
         public static void DisconnectVal()

@@ -66,10 +66,10 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	peerService.version = version
 	peerService.minPeerVersion = minimalSupportedVersion
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version, "Normal")
-	peerService.host.SetStreamHandlerMatch(protocol.ID(protocolString), peerService.networkMatcher, peerService.onConnect)
+	peerService.host.SetStreamHandlerMatch(protocol.ID(protocolString), peerService.networkMatcherNormal, peerService.onConnect)
 
 	valProtocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version, "Validator")
-	peerService.host.SetStreamHandlerMatch(protocol.ID(valProtocolString), peerService.networkMatcher, peerService.onConnectVal)
+	peerService.host.SetStreamHandlerMatch(protocol.ID(valProtocolString), peerService.networkMatcherVal, peerService.onConnectVal)
 
 	mAddrs := config.GetBootstrapMultiaddrs("Normal")
 	for i, bootstrapId := range config.GetBootstrapIDs("Normal") {
@@ -79,7 +79,7 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	return peerService
 }
 
-func (peerService *PeerService) networkMatcher(protocol string) bool {
+func (peerService *PeerService) networkMatcherNormal(protocol string) bool {
 	var network string
 	var version int32
 	var channel string
@@ -87,7 +87,24 @@ func (peerService *PeerService) networkMatcher(protocol string) bool {
 	if err != nil {
 		return false
 	}
-	if network != peerService.networkName {
+	if network != peerService.networkName || channel != "Normal" {
+		return false
+	}
+	if version < peerService.minPeerVersion {
+		return false
+	}
+	return true
+}
+
+func (peerService *PeerService) networkMatcherVal(protocol string) bool {
+	var network string
+	var version int32
+	var channel string
+	_, err := fmt.Sscanf(protocol, protocolFormat, &network, &version, &channel)
+	if err != nil {
+		return false
+	}
+	if network != peerService.networkName || channel != "Validator" {
 		return false
 	}
 	if version < peerService.minPeerVersion {
@@ -112,11 +129,16 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
 	peerService.connections[id.Pretty()] = conn
 }
 
-func (peerService *PeerService) ConnectValidatorChannel() {
-	mAddrs := config.GetBootstrapMultiaddrs("Validator")
-	for i, bootstrapId := range config.GetBootstrapIDs("Validator") {
-		peerService.connectVal(bootstrapId, mAddrs[i])
+func (peerService *PeerService) ConnectValidatorChannel(publicKey string) {
+	log.Tracef("connecting to val peer %v", publicKey)
+	con := peerService.connectionByPublicKey(publicKey)
+	if con != nil {
+		peerService.connectVal(con.PeerId, con.PeerAddress)
 	}
+	// mAddrs := config.GetBootstrapMultiaddrs("Validator")
+	// for i, bootstrapId := range config.GetBootstrapIDs("Validator") {
+	// 	peerService.connectVal(bootstrapId, mAddrs[i])
+	// }
 }
 
 func (peerService *PeerService) DisconnectValidatorChannel() {
@@ -372,6 +394,7 @@ func (peerService *PeerService) SendMessageToPeer(publicKey string, msg []byte) 
 	peerService.lock()
 	defer peerService.unlock()
 
+	log.Tracef("sending message to peer %v message length %d", publicKey, len(msg))
 	if conn := peerService.connectionByPublicKey(publicKey); conn != nil {
 		//log.Tracef("Sending message to peer %v message length %d", conn.PeerId.Pretty(), len(msg))
 		conn.Send(msg)
@@ -386,12 +409,13 @@ func (peerService *PeerService) SendMessageToValPeer(publicKey string, msg []byt
 	peerService.lock()
 	defer peerService.unlock()
 
+	log.Tracef("sending message to val peer %v message length %d", publicKey, len(msg))
 	if conn := peerService.connectionByValPublicKey(publicKey); conn != nil {
 		//log.Tracef("Sending message to peer %v message length %d", conn.PeerId.Pretty(), len(msg))
 		conn.Send(msg)
 		return true
 	}
-	log.Tracef("Postponed message to peer %v message length %d", publicKey, len(msg))
+	log.Tracef("Postponed message to val peer %v message length %d", publicKey, len(msg))
 	peerService.storeMessageVal(publicKey, msg)
 	return false
 }

@@ -27,7 +27,9 @@ namespace Lachain.CommunicationHub.Net
     );
 
     [SymbolName("ConnectValidatorChannel")]
-    public delegate bool HubValidatorConnect();
+    public unsafe delegate bool HubValidatorConnect(
+        byte* pubKey, int pubKeyLen
+    );
 
     [SymbolName("DisconnectValidatorChannel")]
     public delegate bool HubValidatorDisconnect();

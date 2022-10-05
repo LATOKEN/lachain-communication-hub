@@ -5,7 +5,7 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <LangVersion>8</LangVersion>
         <Nullable>enable</Nullable>
-        <Version>0.0.20</Version>
+        <Version>0.0.21</Version>
         <Title>Lachain.CommunicationHub.Net</Title>
         <Authors>Skird</Authors>
         <Description>Netstandard 2.1 wrapper for Lachain communication hub library. Use Lachain.CommunicationHub.Native package to get platform specific binaries for common platforms.</Description>
