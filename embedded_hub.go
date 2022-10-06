@@ -41,6 +41,7 @@ func ProcessMessage(msg []byte) {
 //export StartHub
 func StartHub(bootstrapAddress *C.char, bootstrapAddressLen C.int, privKey unsafe.Pointer, privKeyLen C.int,
 	networkName *C.char, networkNameLen C.int, version C.int, minimalSupportedVersion C.int, chainId C.int) {
+	log.Tracef("new hub 81")
 	mutex.Lock()
 	defer mutex.Unlock()
 	config.ChainId = byte(chainId)

@@ -57,6 +57,7 @@ namespace Lachain.CommunicationHub.Net
 
         public static void Start(string bootstrapAddress,  byte[] privKey, string networkName, int version, int minPeerVersion, int chainId)
         {
+            System.Console.WriteLine("new hub 31");
             unsafe
             {
                 var bootstrapAddressBytes = Encoding.UTF8.GetBytes(bootstrapAddress);

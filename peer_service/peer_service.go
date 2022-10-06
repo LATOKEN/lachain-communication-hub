@@ -130,10 +130,10 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
 }
 
 func (peerService *PeerService) ConnectValidatorChannel(publicKey string) {
-	log.Tracef("connecting to val peer %v", publicKey)
+	log.Tracef("connecting to val peer with signature %v", publicKey)
 	con := peerService.connectionByPublicKey(publicKey)
 	if con != nil {
-		peerService.connectVal(con.PeerId, con.PeerAddress)
+		peerService.connectVal(con.PeerId, con.PeerAddress, peerService.Signature)
 	}
 	// mAddrs := config.GetBootstrapMultiaddrs("Validator")
 	// for i, bootstrapId := range config.GetBootstrapIDs("Validator") {
@@ -149,7 +149,7 @@ func (peerService *PeerService) DisconnectValidatorChannel() {
 	peerService.valConnections = nil
 }
 
-func (peerService *PeerService) connectVal(id peer.ID, address ma.Multiaddr) {
+func (peerService *PeerService) connectVal(id peer.ID, address ma.Multiaddr, signature []byte) {
 	if id == peerService.host.ID() {
 		return
 	}
@@ -159,7 +159,7 @@ func (peerService *PeerService) connectVal(id peer.ID, address ma.Multiaddr) {
 	valProtocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version, "Validator")
 
 	conn := connection.New(
-		&peerService.host, id, valProtocolString, peerService.myExternalAddress, address, nil,
+		&peerService.host, id, valProtocolString, peerService.myExternalAddress, address, signature,
 		peerService.updateValPeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableValRelays, peerService.GetValPeers,
 	)
