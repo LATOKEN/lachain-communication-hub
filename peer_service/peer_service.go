@@ -3,6 +3,13 @@ package peer_service
 import (
 	"errors"
 	"fmt"
+	"lachain-communication-hub/config"
+	"lachain-communication-hub/host"
+	"lachain-communication-hub/peer_service/connection"
+	"lachain-communication-hub/utils"
+	"strings"
+	"sync"
+
 	"github.com/juju/loggo"
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/crypto"
@@ -10,12 +17,6 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
 	ma "github.com/multiformats/go-multiaddr"
-	"lachain-communication-hub/config"
-	"lachain-communication-hub/host"
-	"lachain-communication-hub/peer_service/connection"
-	"lachain-communication-hub/utils"
-	"strings"
-	"sync"
 )
 
 var log = loggo.GetLogger("peer_service")
@@ -110,6 +111,15 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 	if peerService.running == 0 {
 		return
 	}
+	gotProtocol := stream.Protocol()
+	str := protocol.ID(gotProtocol)
+	log.Tracef("got protocol %v", gotProtocol)
+	log.Tracef("got ID(protocol) %v", str)
+	strProtocols := protocol.ConvertToStrings([]protocol.ID {gotProtocol})
+	for _, pr := range strProtocols {
+		log.Tracef("from string %v", pr)
+	}
+	
 	id := stream.Conn().RemotePeer().Pretty()
 	log.Tracef("Got incoming stream from %v (%v)", id, stream.Conn().RemoteMultiaddr().String())
 	if conn, ok := peerService.connections[id]; ok {
