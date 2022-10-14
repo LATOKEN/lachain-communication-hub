@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/gob"
-	"github.com/libp2p/go-libp2p-core/peer"
-	ma "github.com/multiformats/go-multiaddr"
 	"lachain-communication-hub/communication"
 	"lachain-communication-hub/utils"
+
+	"github.com/libp2p/go-libp2p-core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 type Metadata struct {
@@ -15,6 +16,7 @@ type Metadata struct {
 	Id        peer.ID
 	LastSeen  uint32
 	Addr      ma.Multiaddr
+	Protocol  string
 }
 
 type MetadataSerializable struct {
@@ -22,6 +24,7 @@ type MetadataSerializable struct {
 	Id        string
 	LastSeen  uint32
 	Addr      []byte
+	Protocol  string
 }
 
 func (pc *Metadata) toBytes() []byte {
@@ -39,6 +42,7 @@ func (pc *Metadata) toBytes() []byte {
 		Id:        pc.Id.Pretty(),
 		LastSeen:  pc.LastSeen,
 		Addr:      addr,
+		Protocol:  pc.Protocol,
 	}
 
 	err := enc.Encode(ser)
@@ -85,6 +89,7 @@ func PeerConnectionFromBytes(raw []byte) *Metadata {
 		Id:        id,
 		LastSeen:  peerConn.LastSeen,
 		Addr:      addr,
+		Protocol:  peerConn.Protocol,
 	}
 }
 
