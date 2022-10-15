@@ -74,6 +74,18 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	return peerService
 }
 
+func (peerService *PeerService) CreateChannelWithPeers(peers []string, protocolType byte) {
+	for _, publicKey := range peers {
+		// get connection from common channel
+		// all peers should be connected to common channel
+
+		con := peerService.connectionByPublicKey(publicKey, protocols.CommonChannel)
+		if (con != nil) {
+			peerService.connect(con.PeerId, con.PeerAddress, protocolType)
+		}
+	}
+}
+
 func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr, protocolType byte) {
 	if id == peerService.host.ID() {
 		return
@@ -81,13 +93,17 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr, protoc
 	if _, ok := peerService.connections[protocolType][id.Pretty()]; id == peerService.host.ID() || ok {
 		return
 	}
-	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
+	protocolString, err := peerService.protocols.GetProtocol(protocolType)
+	if (err != nil) {
+		log.Errorf("Cannot connect to peer %v, invalid protocol. How did it happen?", id.Pretty())
+		panic(err)
+	}
 	conn := connection.New(
-		&peerService.host, id, protocolString, peerService.myExternalAddress, address,  nil,
+		&peerService.host, id, protocolString, protocolType, peerService.myExternalAddress, address,  nil,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
-	peerService.connections[id.Pretty()] = conn
+	peerService.connections[protocolType][id.Pretty()] = conn
 }
 
 func (peerService *PeerService) onConnect(stream network.Stream) {
@@ -104,23 +120,27 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 	for _, pr := range strProtocols {
 		log.Tracef("from string %v", pr)
 	}
-	actualProtocol := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
+	actualProtocol := fmt.Sprintf(protocols.ProtocolFormat, peerService.networkName, peerService.version, protocols.CommonChannel)
 	log.Tracef("actual protocol %v", actualProtocol)
 	
 	id := stream.Conn().RemotePeer().Pretty()
-	log.Tracef("Got incoming stream from %v (%v)", id, stream.Conn().RemoteMultiaddr().String())
-	if conn, ok := peerService.connections[id]; ok {
+	protocolType, err := peerService.protocols.GetProtocolType(strProtocols[0])
+	if (err != nil) {
+		log.Debugf("Cannot connect to peer %v, invalid protocol", id)
+		return
+	}
+	log.Tracef("Got incoming stream from %v (%v) with protocol %v", id, stream.Conn().RemoteMultiaddr().String(), protocolType)
+	if conn, ok := peerService.connections[protocolType][id]; ok {
 		conn.SetInboundStream(stream)
 		return
 	}
 	// TODO: manage peers to preserve important ones & exclude extra
-	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
 	newConnect := connection.FromStream(
-		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, protocolString,
+		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, strProtocols[0], protocolType,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
-	peerService.connections[id] = newConnect
+	peerService.connections[protocolType][id] = newConnect
 }
 
 func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection, publicKey string) {
@@ -129,34 +149,46 @@ func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection
 	}
 	peerService.lock()
 	defer peerService.unlock()
-	log.Debugf("Sending %v postponed messages to peer %v with freshly recovered key %v", len(peerService.messages[publicKey]), conn.PeerId.Pretty(), publicKey)
-	for _, msg := range peerService.messages[publicKey] {
+	protocolType, err := peerService.protocols.GetProtocolType(conn.PeerProtocol)
+	if (err != nil) {
+		log.Errorf("Connection to peer %v with public key %v has invalid protocol. How did it happen?", conn.PeerId.Pretty(), publicKey)
+		panic(err)
+	}
+	log.Debugf(
+		"Sending %v postponed messages to peer %v with protocol %v with freshly recovered key %v", 
+		len(peerService.messages[protocolType][publicKey]), conn.PeerId.Pretty(), protocolType, publicKey,
+	)
+	for _, msg := range peerService.messages[protocolType][publicKey] {
 		conn.Send(msg)
 	}
-	peerService.messages[publicKey] = nil
+	peerService.messages[protocolType][publicKey] = nil
 }
 
-func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata) {
+func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata, peerId peer.ID) {
 	if peerService.running == 0 {
 		return
 	}
 	peerService.lock()
 	defer peerService.unlock()
 	log.Tracef("Got list of %v potential peers", len(newPeers))
-	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
 	for _, newPeer := range newPeers {
 		if newPeer.Id == peerService.host.ID() {
 			continue
 		}
-		if conn, ok := peerService.connections[newPeer.Id.Pretty()]; ok {
+		protocolType, err := peerService.protocols.GetProtocolType(newPeer.Protocol)
+		if (err != nil) {
+			log.Debugf("peer %v sent peer list with unsupported protocol", peerId.Pretty())
+			continue
+		}
+		if conn, ok := peerService.connections[protocolType][newPeer.Id.Pretty()]; ok {
 			log.Tracef("Peer %v already has connection", newPeer.Id.Pretty())
 			if newPeer.Addr != nil {
 				conn.SetPeerAddress(newPeer.Addr)
 			}
 			continue
 		}
-		peerService.connections[newPeer.Id.Pretty()] = connection.New(
-			&peerService.host, newPeer.Id, protocolString, peerService.myExternalAddress, newPeer.Addr,
+		peerService.connections[protocolType][newPeer.Id.Pretty()] = connection.New(
+			&peerService.host, newPeer.Id, newPeer.Protocol, protocolType, peerService.myExternalAddress, newPeer.Addr,
 			peerService.Signature,
 			peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 			peerService.AvailableRelays, peerService.GetPeers,
@@ -179,17 +211,19 @@ func (peerService *PeerService) SetSignature(signature []byte) bool {
 	}
 	log.Debugf("Recovered public key from outside: %v", utils.PublicKeyToHexString(localPublicKey))
 	peerService.Signature = signature
-	for _, conn := range peerService.connections {
-		conn.SetSignature(signature)
+	for _, protocolType := range peerService.protocols.GetAllProtocolTypes() {
+		for _, conn := range peerService.connections[protocolType] {
+			conn.SetSignature(signature)
+		}
 	}
 	return true
 }
 
-func (peerService *PeerService) AvailableRelays() []peer.ID {
+func (peerService *PeerService) AvailableRelays(protocolType byte, peerId peer.ID) []peer.ID {
 	peerService.lock()
 	defer peerService.unlock()
 	var result []peer.ID
-	for _, conn := range peerService.connections {
+	for _, conn := range peerService.connections[protocolType] {
 		if conn.IsActive() && conn.PeerAddress != nil {
 			result = append(result, conn.PeerId)
 		}
@@ -197,25 +231,26 @@ func (peerService *PeerService) AvailableRelays() []peer.ID {
 	return result
 }
 
-func (peerService *PeerService) GetPeers() []*connection.Metadata {
+func (peerService *PeerService) GetPeers(protocolType byte) []*connection.Metadata {
 	peerService.lock()
 	defer peerService.unlock()
 	var result []*connection.Metadata
-	for _, conn := range peerService.connections {
+	for _, conn := range peerService.connections[protocolType] {
 		if conn.IsActive() {
 			result = append(result, &connection.Metadata{
 				PublicKey: conn.PeerPublicKey,
 				Id:        conn.PeerId,
 				LastSeen:  0, // TODO: restore last seen mechanism
 				Addr:      conn.PeerAddress,
+				Protocol:  conn.PeerProtocol,
 			})
 		}
 	}
 	return result
 }
 
-func (peerService *PeerService) connectionByPublicKey(publicKey string) *connection.Connection {
-	for _, conn := range peerService.connections {
+func (peerService *PeerService) connectionByPublicKey(publicKey string, protocolType byte) *connection.Connection {
+	for _, conn := range peerService.connections[protocolType] {
 		if conn.PeerPublicKey == publicKey {
 			return conn
 		}
@@ -223,24 +258,24 @@ func (peerService *PeerService) connectionByPublicKey(publicKey string) *connect
 	return nil
 }
 
-func (peerService *PeerService) SendMessageToPeer(publicKey string, msg []byte) bool {
+func (peerService *PeerService) SendMessageToPeer(publicKey string, protocolType byte, msg []byte) bool {
 	peerService.lock()
 	defer peerService.unlock()
 
-	if conn := peerService.connectionByPublicKey(publicKey); conn != nil {
+	if conn := peerService.connectionByPublicKey(publicKey, protocolType); conn != nil {
 		//log.Tracef("Sending message to peer %v message length %d", conn.PeerId.Pretty(), len(msg))
 		conn.Send(msg)
 		return true
 	}
-	log.Tracef("Postponed message to peer %v message length %d", publicKey, len(msg))
-	peerService.storeMessage(publicKey, msg)
+	log.Tracef("Postponed message to peer %v with protocol %v. Message length %d", publicKey, protocolType, len(msg))
+	peerService.storeMessage(publicKey, protocolType, msg)
 	return false
 }
 
-func (peerService *PeerService) BroadcastMessage(msg []byte) {
+func (peerService *PeerService) BroadcastMessage(protocolType byte, msg []byte) {
 	peerService.lock()
 	defer peerService.unlock()
-	for _, conn := range peerService.connections {
+	for _, conn := range peerService.connections[protocolType] {
 		if !conn.IsActive() && len(conn.PeerPublicKey) > 0 {
 			continue
 		}
@@ -277,10 +312,10 @@ func (peerService *PeerService) GetExternalMultiAddress() (ma.Multiaddr, error) 
 	return nil, errors.New("no_external_multiaddr")
 }
 
-func (peerService *PeerService) IsConnected(publicKey string) bool {
+func (peerService *PeerService) IsConnected(publicKey string, protocolType byte) bool {
 	peerService.lock()
 	defer peerService.unlock()
-	conn, exist := peerService.connections[publicKey]
+	conn, exist := peerService.connections[protocolType][publicKey]
 	return exist && conn.IsActive()
 }
 
@@ -301,9 +336,11 @@ func (peerService *PeerService) Stop() {
 	}
 	close(peerService.quit)
 	peerService.running = 0
-	for pubKey, conn := range peerService.connections {
-		conn.Terminate()
-		log.Debugf("Connection terminated %v", pubKey)
+	for _, protocolType := range peerService.protocols.GetAllProtocolTypes() {
+		for pubKey, conn := range peerService.connections[protocolType] {
+			conn.Terminate()
+			log.Debugf("Connection terminated %v", pubKey)
+		}
 	}
 	peerService.connections = nil
 	if err := peerService.host.ConnManager().Close(); err != nil {
@@ -318,8 +355,7 @@ func (peerService *PeerService) Stop() {
 		panic(err)
 	}
 	log.Debugf("Closed Peerstore")
-	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
-	peerService.host.RemoveStreamHandler(protocol.ID(protocolString))
+	peerService.protocols.RemoveStreamHandler(&peerService.host)
 	log.Debugf("Removed Handlers")
 	if err := peerService.host.Close(); err != nil {
 		panic(err)
@@ -327,10 +363,10 @@ func (peerService *PeerService) Stop() {
 	log.Debugf("Closed host")
 }
 
-func (peerService *PeerService) storeMessage(key string, msg []byte) {
-	if conn := peerService.connectionByPublicKey(key); conn != nil {
+func (peerService *PeerService) storeMessage(key string, protocolType byte, msg []byte) {
+	if conn := peerService.connectionByPublicKey(key, protocolType); conn != nil {
 		conn.Send(msg)
 	} else {
-		peerService.messages[key] = append(peerService.messages[key], msg)
+		peerService.messages[protocolType][key] = append(peerService.messages[protocolType][key], msg)
 	}
 }
