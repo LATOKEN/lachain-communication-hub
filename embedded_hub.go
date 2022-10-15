@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/peer_service"
+	"lachain-communication-hub/peer_service/protocols"
 	"net"
 	"net/http"
 	"os"
@@ -141,12 +142,39 @@ func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Point
 	data := C.GoBytes(dataPtr, dataLen)
 	//log.Tracef("SendMessage command to send %d bytes to %s", dataLen, hex.EncodeToString(pubKey))
 
+	// in current implementation, we broadcast to common channel only
+	// all peers should be connected to common channel
+
 	if bytes.Equal(pubKey, ZeroPub) {
-		localPeer.BroadcastMessage(data)
+		localPeer.BroadcastMessage(protocols.CommonChannel, data)
 	} else {
 		pub := hex.EncodeToString(pubKey)
-		localPeer.SendMessageToPeer(pub, data)
+		localPeer.SendMessageToPeer(pub, protocols.CommonChannel, data)
 	}
+}
+
+//export SendMessageToValidator
+func SendMessageToValidator(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Pointer, dataLen C.int) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	pubKey := C.GoBytes(pubKeyPtr, pubKeyLen)
+	data := C.GoBytes(dataPtr, dataLen)
+	//log.Tracef("SendMessage command to send %d bytes to %s", dataLen, hex.EncodeToString(pubKey))
+
+	// in current implementation, we broadcast to common channel only
+	// all peers should be connected to common channel
+
+	if bytes.Equal(pubKey, ZeroPub) {
+		log.Errorf("empty public key for validator channel")
+	} else {
+		pub := hex.EncodeToString(pubKey)
+		localPeer.SendMessageToPeer(pub, protocols.ValidatorChannel, data)
+	}
+}
+
+//export ConnectToValidatorChannel
+func ConnectToValidatorChannel() {
+	
 }
 
 //export LogLevel
