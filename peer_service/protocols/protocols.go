@@ -15,6 +15,7 @@ var ProtocolFormat = "%s %d %d"
 const (
 	CommonChannel    = 0
 	ValidatorChannel = 1
+	ProtocolError    = 255
 )
 
 type Protocols struct {
@@ -41,7 +42,7 @@ func (protcols *Protocols) getValidatorProtocol() string {
 	return fmt.Sprintf(ProtocolFormat, protcols.networkName, protcols.version, ValidatorChannel)
 }
 
-func (protcols *Protocols) getProtocol(protocolType int32) (string, error) {
+func (protcols *Protocols) GetProtocol(protocolType byte) (string, error) {
 	switch (protocolType) {
 	case CommonChannel:
 		return protcols.getCommonProtcol(), nil
@@ -53,13 +54,18 @@ func (protcols *Protocols) getProtocol(protocolType int32) (string, error) {
 	}
 }
 
-func (protocols *Protocols) getProtocolType(protocol string) (int32, error) {
+func (protocols *Protocols) GetProtocolType(protocol string) (byte, error) {
+	if (protocols.networkMatcher(protocol) == false) {
+		log.Errorf("We don't support protocol %v", protocol)
+		return ProtocolError, errors.New("unsupported protocol")
+	}
+
 	var protocolType int32
 	var network string
 	var version int32
 	_, err := fmt.Sscanf(protocol, ProtocolFormat, &network, &version, &protocolType)
 	if (err != nil) {
-		return -1, err
+		return ProtocolError, err
 	}
 
 	switch (protocolType) {
@@ -69,8 +75,12 @@ func (protocols *Protocols) getProtocolType(protocol string) (int32, error) {
 		return ValidatorChannel, nil
 	default:
 		log.Errorf("Got unregistered protocol type %d", protocolType)
-		return -1, errors.New("unregistered protocol type")
+		return ProtocolError, errors.New("unregistered protocol type")
 	}
+}
+
+func (protocols *Protocols) GetAllProtocolTypes() []byte {
+	return []byte {CommonChannel, ValidatorChannel}
 }
 
 func (protocols *Protocols) SetStreamHandlerMatch(
@@ -80,16 +90,25 @@ func (protocols *Protocols) SetStreamHandlerMatch(
 	// for now we don't have any complex protocol
 	// for any protocol, we need to create a channel with the corresponding protocol
 
-	// setting common channel
+	for _, protocolType := range protocols.GetAllProtocolTypes() {
+		protocolString, err := protocols.GetProtocol(protocolType)
+		if (err != nil) {
+			log.Errorf("Did not implement protocol for type %v", protocolType)
+			panic(err)
+		}
+		(*host).SetStreamHandlerMatch(protocol.ID(protocolString), protocols.networkMatcher, onConnect)
+	}
+}
 
-	var protocolString string
-	protocolString = protocols.getCommonProtcol()
-	(*host).SetStreamHandlerMatch(protocol.ID(protocolString), protocols.networkMatcher, onConnect)
-
-	// setting validator channel
-
-	protocolString = protocols.getValidatorProtocol()
-	(*host).SetStreamHandlerMatch(protocol.ID(protocolString), protocols.networkMatcher, onConnect)
+func (protocols *Protocols) RemoveStreamHandler(host *core.Host) {
+	for _, protocolType := range protocols.GetAllProtocolTypes() {
+		protocolString, err := protocols.GetProtocol(protocolType)
+		if (err != nil) {
+			log.Errorf("Did not implement protocol for type %v", protocolType)
+			panic(err)
+		}
+		(*host).RemoveStreamHandler(protocol.ID(protocolString))
+	}
 }
 
 // common network matcher for all protocols
