@@ -6,6 +6,7 @@ import (
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer_service/connection"
+	"lachain-communication-hub/peer_service/protocols"
 	"lachain-communication-hub/utils"
 	"strings"
 	"sync"
@@ -20,13 +21,12 @@ import (
 )
 
 var log = loggo.GetLogger("peer_service")
-var protocolFormat = "%s %d"
 
 type PeerService struct {
 	host              core.Host
 	myExternalAddress ma.Multiaddr
-	connections       map[string]*connection.Connection
-	messages          map[string][][]byte
+	connections       map[byte]map[string]*connection.Connection
+	messages          map[byte]map[string][][]byte
 	mutex             *sync.Mutex
 	msgHandler        func([]byte)
 	running           int32
@@ -36,6 +36,7 @@ type PeerService struct {
 	networkName		  string
 	version           int32
 	minPeerVersion	  int32
+	protocols		  *protocols.Protocols
 }
 
 func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupportedVersion int32,
@@ -46,9 +47,10 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 
 	mut := &sync.Mutex{}
 	peerService := new(PeerService)
+	peerService.protocols = protocols.New(networkName, version, minimalSupportedVersion)
 	peerService.host = localHost
-	peerService.connections = make(map[string]*connection.Connection)
-	peerService.messages = make(map[string][][]byte)
+	peerService.connections = make(map[byte]map[string]*connection.Connection)
+	peerService.messages = make(map[byte]map[string][][]byte)
 	peerService.mutex = mut
 	peerService.running = 1
 	peerService.quit = make(chan struct{})
@@ -63,37 +65,20 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	peerService.networkName = networkName
 	peerService.version = version
 	peerService.minPeerVersion = minimalSupportedVersion
-	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
-	peerService.host.SetStreamHandlerMatch(protocol.ID(protocolString), peerService.networkMatcher, peerService.onConnect)
+	peerService.protocols.SetStreamHandlerMatch(&peerService.host, peerService.onConnect)
 
 	mAddrs := config.GetBootstrapMultiaddrs()
 	for i, bootstrapId := range config.GetBootstrapIDs() {
-		peerService.connect(bootstrapId, mAddrs[i])
+		peerService.connect(bootstrapId, mAddrs[i], protocols.CommonChannel)
 	}
 	return peerService
 }
 
-func (peerService *PeerService) networkMatcher(protocol string) bool {
-	var network string
-	var version int32
-	_, err := fmt.Sscanf(protocol, protocolFormat, &network, &version)
-	if err != nil {
-		return false
-	}
-	if network != peerService.networkName {
-		return false
-	}
-	if version < peerService.minPeerVersion {
-		return false
-	}
-	return true
-}
-
-func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
+func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr, protocolType byte) {
 	if id == peerService.host.ID() {
 		return
 	}
-	if _, ok := peerService.connections[id.Pretty()]; id == peerService.host.ID() || ok {
+	if _, ok := peerService.connections[protocolType][id.Pretty()]; id == peerService.host.ID() || ok {
 		return
 	}
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
@@ -119,6 +104,8 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 	for _, pr := range strProtocols {
 		log.Tracef("from string %v", pr)
 	}
+	actualProtocol := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
+	log.Tracef("actual protocol %v", actualProtocol)
 	
 	id := stream.Conn().RemotePeer().Pretty()
 	log.Tracef("Got incoming stream from %v (%v)", id, stream.Conn().RemoteMultiaddr().String())
