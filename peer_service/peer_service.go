@@ -51,6 +51,11 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	peerService.host = localHost
 	peerService.connections = make(map[byte]map[string]*connection.Connection)
 	peerService.messages = make(map[byte]map[string][][]byte)
+	allProtocolType := peerService.protocols.GetAllProtocolTypes()
+	for _, protocolType := range allProtocolType {
+		peerService.connections[protocolType] = make(map[string]*connection.Connection)
+		peerService.messages[protocolType] = make(map[string][][]byte)
+	}
 	peerService.mutex = mut
 	peerService.running = 1
 	peerService.quit = make(chan struct{})
@@ -74,16 +79,46 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	return peerService
 }
 
-func (peerService *PeerService) CreateChannelWithPeers(peers []string, protocolType byte) {
+func (peerService *PeerService) ConnectPeersToChannel(peers []string, protocolType byte) {
+	peerService.lock()
+	defer peerService.unlock()
+
 	for _, publicKey := range peers {
 		// get connection from common channel
 		// all peers should be connected to common channel
+		// otherwise we will need bootstrap address of peer id
 
 		con := peerService.connectionByPublicKey(publicKey, protocols.CommonChannel)
 		if (con != nil) {
 			peerService.connect(con.PeerId, con.PeerAddress, protocolType)
 		}
 	}
+}
+
+func (peerService *PeerService) DisconnectPeersFromChannel(peers []string, protocolType byte) {
+	peerService.lock()
+	defer peerService.unlock()
+	
+	for _, publicKey := range peers {
+		conn := peerService.connectionByPublicKey(publicKey, protocolType)
+		if (conn == nil) {
+			continue
+		}
+		conn.Terminate()
+		log.Debugf("Connection terminated %v for protocol %v", conn.PeerId.Pretty(), protocolType)
+		delete(peerService.connections[protocolType], conn.PeerId.Pretty())
+	}
+}
+
+func (peerService *PeerService) DisconnectChannel(protocolType byte) {
+	peerService.lock()
+	defer peerService.unlock()
+
+	for peerId, conn := range peerService.connections[protocolType] {
+		conn.Terminate()
+		log.Debugf("Connection terminated %v for protocol %v", peerId, protocolType)
+	}
+	peerService.connections[protocolType] = make(map[string]*connection.Connection)
 }
 
 func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr, protocolType byte) {
@@ -211,8 +246,8 @@ func (peerService *PeerService) SetSignature(signature []byte) bool {
 	}
 	log.Debugf("Recovered public key from outside: %v", utils.PublicKeyToHexString(localPublicKey))
 	peerService.Signature = signature
-	for _, protocolType := range peerService.protocols.GetAllProtocolTypes() {
-		for _, conn := range peerService.connections[protocolType] {
+	for _, connectionByProtocol := range peerService.connections {
+		for _, conn := range connectionByProtocol {
 			conn.SetSignature(signature)
 		}
 	}
@@ -336,10 +371,10 @@ func (peerService *PeerService) Stop() {
 	}
 	close(peerService.quit)
 	peerService.running = 0
-	for _, protocolType := range peerService.protocols.GetAllProtocolTypes() {
-		for pubKey, conn := range peerService.connections[protocolType] {
+	for protocolType, connectionByProtocol := range peerService.connections {
+		for pubKey, conn := range connectionByProtocol {
 			conn.Terminate()
-			log.Debugf("Connection terminated %v", pubKey)
+			log.Debugf("Connection terminated %v for protocol %v", pubKey, protocolType)
 		}
 	}
 	peerService.connections = nil

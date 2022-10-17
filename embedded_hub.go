@@ -173,8 +173,44 @@ func SendMessageToValidator(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr u
 }
 
 //export ConnectToValidatorChannel
-func ConnectToValidatorChannel() {
-	
+func ConnectToValidatorChannel(pubKeyPtr unsafe.Pointer, pubKeyPtrLen C.int) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	pubKeyLen := 33
+	data := C.GoBytes(pubKeyPtr, pubKeyPtrLen)
+	dataLen := len(data)
+
+	var pubKeys []string
+	for i := 0; i < dataLen; i += pubKeyLen {
+		pubKey := data[i : i + pubKeyLen]
+		pubKeys = append(pubKeys, hex.EncodeToString(pubKey))
+	}
+	localPeer.ConnectPeersToChannel(pubKeys, protocols.ValidatorChannel)
+}
+
+//export DisconnectPeersFromValidatorChannel
+func DisconnectPeersFromValidatorChannel(pubKeyPtr unsafe.Pointer, pubKeyPtrLen C.int) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	pubKeyLen := 33
+	data := C.GoBytes(pubKeyPtr, pubKeyPtrLen)
+	dataLen := len(data)
+
+	var pubKeys []string
+	for i := 0; i < dataLen; i += pubKeyLen {
+		pubKey := data[i : i + pubKeyLen]
+		pubKeys = append(pubKeys, hex.EncodeToString(pubKey))
+	}
+	localPeer.DisconnectPeersFromChannel(pubKeys, protocols.ValidatorChannel)
+}
+
+//export DisconnectValidatorChannel
+func DisconnectValidatorChannel() {
+	mutex.Lock()
+	defer mutex.Unlock()
+	localPeer.DisconnectChannel(protocols.ValidatorChannel)
 }
 
 //export LogLevel
