@@ -2,7 +2,6 @@ package peer_service
 
 import (
 	"errors"
-	"fmt"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer_service/connection"
@@ -138,6 +137,7 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr, protoc
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
+	log.Tracef("Connected to peer %v with protocol %v", id.Pretty(), protocolType)
 	peerService.connections[protocolType][id.Pretty()] = conn
 }
 
@@ -148,18 +148,10 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 		return
 	}
 	gotProtocol := stream.Protocol()
-	str := protocol.ID(gotProtocol)
-	log.Tracef("got protocol %v", gotProtocol)
-	log.Tracef("got ID(protocol) %v", str)
-	strProtocols := protocol.ConvertToStrings([]protocol.ID {gotProtocol})
-	for _, pr := range strProtocols {
-		log.Tracef("from string %v", pr)
-	}
-	actualProtocol := fmt.Sprintf(protocols.ProtocolFormat, peerService.networkName, peerService.version, protocols.CommonChannel)
-	log.Tracef("actual protocol %v", actualProtocol)
+	strProtocol := protocol.ConvertToStrings([]protocol.ID {gotProtocol})[0]
 	
 	id := stream.Conn().RemotePeer().Pretty()
-	protocolType, err := peerService.protocols.GetProtocolType(strProtocols[0])
+	protocolType, err := peerService.protocols.GetProtocolType(strProtocol)
 	if (err != nil) {
 		log.Debugf("Cannot connect to peer %v, invalid protocol", id)
 		return
@@ -171,7 +163,7 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 	}
 	// TODO: manage peers to preserve important ones & exclude extra
 	newConnect := connection.FromStream(
-		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, strProtocols[0], protocolType,
+		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, strProtocol, protocolType,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
