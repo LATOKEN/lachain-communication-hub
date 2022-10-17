@@ -9,7 +9,11 @@ namespace Lachain.CommunicationHub.Net
         internal readonly Lazy<HubStart> StartHub;
         internal readonly Lazy<HubStop> StopHub;
         internal readonly Lazy<HubLogLevel> LogLevel;
+        internal readonly Lazy<HubConnectToValidatorChannel> ConnectToValidatorChannel;
+        internal readonly Lazy<HubDisconnectPeersFromValidatorChannel> DisconnectPeersFromValidatorChannel;
+        internal readonly Lazy<HubDisconnectValidatorChannel> DisconnectValidatorChannel;
         internal readonly Lazy<HubSendMessage> SendMessage;
+        internal readonly Lazy<HubSendMessageToValidator> SendMessageToValidator;
         internal readonly Lazy<HubGetMessages> GetMessages;
         internal readonly Lazy<HubInit> HubInit;
         internal readonly Lazy<HubGetKey> HubGetKey;
@@ -30,7 +34,11 @@ namespace Lachain.CommunicationHub.Net
             StartHub = LazyDelegate<HubStart>();
             StopHub = LazyDelegate<HubStop>();
             LogLevel = LazyDelegate<HubLogLevel>();
+            ConnectToValidatorChannel = LazyDelegate<HubConnectToValidatorChannel>();
+            DisconnectPeersFromValidatorChannel = LazyDelegate<HubDisconnectPeersFromValidatorChannel>();
+            DisconnectValidatorChannel = LazyDelegate<HubDisconnectValidatorChannel>();
             SendMessage = LazyDelegate<HubSendMessage>();
+            SendMessageToValidator = LazyDelegate<HubSendMessageToValidator>();
             GetMessages = LazyDelegate<HubGetMessages>();
             HubInit = LazyDelegate<HubInit>();
             HubGetKey = LazyDelegate<HubGetKey>();
@@ -139,6 +147,33 @@ namespace Lachain.CommunicationHub.Net
             }
         }
 
+        public static void StartValidatorChannel(byte[] publicKeys)
+        {
+            unsafe
+            {
+                fixed (byte* publicKeysPtr = publicKeys)
+                {
+                    Imports.ConnectToValidatorChannel.Value(publicKeysPtr, publicKeys.Length);
+                }
+            }
+        }
+
+        public static void DisconnectValidators(byte[] publicKeys)
+        {
+            unsafe
+            {
+                fixed (byte* publicKeysPtr = publicKeys)
+                {
+                    Imports.DisconnectPeersFromValidatorChannel.Value(publicKeysPtr, publicKeys.Length);
+                }
+            }
+        }
+
+        public static void StopValidatorChannel()
+        {
+            Imports.DisconnectValidatorChannel.Value();
+        }
+
         public static void Send(byte[] publicKey, byte[] data)
         {
             unsafe
@@ -147,6 +182,18 @@ namespace Lachain.CommunicationHub.Net
                 fixed (byte* dataPtr = data)
                 {
                     Imports.SendMessage.Value(publicKeyPtr, publicKey.Length, dataPtr, data.Length);
+                }
+            }
+        }
+
+        public static void SendToValidator(byte[] publicKey, byte[] data)
+        {
+            unsafe
+            {
+                fixed (byte* publicKeyPtr = publicKey)
+                fixed (byte* dataPtr = data)
+                {
+                    Imports.SendMessageToValidator.Value(publicKeyPtr, publicKey.Length, dataPtr, data.Length);
                 }
             }
         }
