@@ -178,7 +178,10 @@ func (connection *Connection) receiveMessageCycle() {
 			frame, err := communication.ReadOnce(connection.inboundStream)
 			if err != nil {
 				receiveErrors.WithLabelValues(err.Error()).Inc()
-				log.Errorf("Skipped message from peer %v, resetting connection: %v", connection.PeerId.Pretty(), err)
+				log.Errorf(
+					"Skipped message from peer %v (protocol %v), resetting connection: %v", connection.PeerId.Pretty(),
+					connection.PeerProtocolType, err,
+				)
 				connection.resetInboundStream()
 				continue
 			}
@@ -187,6 +190,7 @@ func (connection *Connection) receiveMessageCycle() {
 			switch frame.Kind() {
 			case communication.Message:
 				inboundMessages.WithLabelValues("message").Inc()
+				log.Tracef("Incomming message from peer %v (protocol %v)", connection.PeerId.Pretty(), connection.PeerProtocolType)
 				connection.onMessage(frame.Data())
 				break
 			case communication.Signature:
@@ -262,7 +266,10 @@ func (connection *Connection) sendMessageCycle() {
 			if err == nil {
 				resendAttempts.Observe(float64(attempts))
 				attempts = 0
-				//log.Tracef("Sent message (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
+				log.Tracef(
+					"Sent message (len = %d bytes) to peer %v (protocol %v)", len(frame.Data()), connection.PeerId.Pretty(),
+					connection.PeerProtocolType,
+				)
 				connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
 				sendBackoff = time.Millisecond
 				msgToSend = nil
