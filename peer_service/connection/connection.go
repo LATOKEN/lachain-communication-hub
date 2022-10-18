@@ -131,7 +131,7 @@ func New(
 	onPeerListUpdate func([]*Metadata, peer.ID), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func(byte, peer.ID) []peer.ID, getPeers func(byte) []*Metadata,
 ) *Connection {
-	log.Debugf("Creating connection with peer %v (address %v)", id.Pretty(), peerAddress.String())
+	log.Debugf("Creating connection with peer %v (address %v) (protcol %v)", id.Pretty(), peerAddress.String(), protocolType)
 	connection := new(Connection)
 	connection.init(host, id, protocol, protocolType, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
 	connection.PeerAddress = peerAddress
