@@ -93,6 +93,7 @@ func (peerService *PeerService) ConnectPeersToChannel(peers []string, protocolTy
 		if (con != nil) {
 			peerService.connect(con.PeerId, con.PeerAddress, protocolType, peerService.Signature)
 		} else {
+			log.Tracef("wating to connect with peer %v (protocol %v)", publicKey, protocolType)
 			peerService.waitForConnection(publicKey, protocolType)
 		}
 	}
@@ -191,6 +192,10 @@ func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection
 	}
 	peerService.messages[protocolType][publicKey] = nil
 
+	log.Debugf(
+		"connecting to peer %v through %d different protocols with with freshly recovered key %v", conn.PeerId.Pretty(),
+		len(peerService.waitingConnection[publicKey]), publicKey,
+	)
 	peerService.connectWaitingConnection(publicKey)
 }
 
