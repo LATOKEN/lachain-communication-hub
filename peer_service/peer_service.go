@@ -25,6 +25,7 @@ type PeerService struct {
 	host              core.Host
 	myExternalAddress ma.Multiaddr
 	connections       map[byte]map[string]*connection.Connection
+	waitingConnection map[string][]byte
 	messages          map[byte]map[string][][]byte
 	mutex             *sync.Mutex
 	msgHandler        func([]byte)
@@ -49,6 +50,7 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	peerService.protocols = protocols.New(networkName, version, minimalSupportedVersion)
 	peerService.host = localHost
 	peerService.connections = make(map[byte]map[string]*connection.Connection)
+	peerService.waitingConnection = make(map[string][]byte)
 	peerService.messages = make(map[byte]map[string][][]byte)
 	allProtocolType := peerService.protocols.GetAllProtocolTypes()
 	for _, protocolType := range allProtocolType {
@@ -90,6 +92,8 @@ func (peerService *PeerService) ConnectPeersToChannel(peers []string, protocolTy
 		con := peerService.connectionByPublicKey(publicKey, protocols.CommonChannel)
 		if (con != nil) {
 			peerService.connect(con.PeerId, con.PeerAddress, protocolType, peerService.Signature)
+		} else {
+			peerService.waitForConnection(publicKey, protocolType)
 		}
 	}
 }
@@ -101,6 +105,7 @@ func (peerService *PeerService) DisconnectPeersFromChannel(peers []string, proto
 	for _, publicKey := range peers {
 		conn := peerService.connectionByPublicKey(publicKey, protocolType)
 		if (conn == nil) {
+			peerService.removeWaitingConnection(publicKey, protocolType)
 			continue
 		}
 		conn.Terminate()
@@ -176,11 +181,7 @@ func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection
 	}
 	peerService.lock()
 	defer peerService.unlock()
-	protocolType, err := peerService.protocols.GetProtocolType(conn.PeerProtocol)
-	if (err != nil) {
-		log.Errorf("Connection to peer %v with public key %v has invalid protocol. How did it happen?", conn.PeerId.Pretty(), publicKey)
-		panic(err)
-	}
+	protocolType := conn.PeerProtocolType
 	log.Debugf(
 		"Sending %v postponed messages to peer %v (protocol %v) with freshly recovered key %v", 
 		len(peerService.messages[protocolType][publicKey]), conn.PeerId.Pretty(), protocolType, publicKey,
@@ -189,6 +190,8 @@ func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection
 		conn.Send(msg)
 	}
 	peerService.messages[protocolType][publicKey] = nil
+
+	peerService.connectWaitingConnection(publicKey)
 }
 
 func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata, peerId peer.ID) {
@@ -399,4 +402,33 @@ func (peerService *PeerService) storeMessage(key string, protocolType byte, msg 
 	} else {
 		peerService.messages[protocolType][key] = append(peerService.messages[protocolType][key], msg)
 	}
+}
+
+func (peerService *PeerService) connectWaitingConnection(publicKey string) {
+	// all peers should be connected through common channel
+
+	for _, protocolType := range peerService.waitingConnection[publicKey] {
+		con := peerService.connectionByPublicKey(publicKey, protocols.CommonChannel)
+		if (con != nil) {
+			peerService.connect(con.PeerId, con.PeerAddress, protocolType, peerService.Signature)
+		} else {
+			log.Debugf("Just recovered public key %v, why we don't have connection in common channel?", publicKey)
+		}
+	}
+	peerService.waitingConnection[publicKey] = nil
+}
+
+func (peerService *PeerService) removeWaitingConnection(publicKey string, protocolType byte) {
+	oldList := peerService.waitingConnection[publicKey]
+	var newList []byte
+	for _, element := range oldList {
+		if (element != protocolType) {
+			newList = append(newList, element)
+		}
+	}
+	peerService.waitingConnection[publicKey] = newList
+}
+
+func (peerService *PeerService) waitForConnection(publicKey string, protocolType byte) {
+	peerService.waitingConnection[publicKey] = append(peerService.waitingConnection[publicKey], protocolType)
 }
