@@ -104,7 +104,7 @@ func (peerService *PeerService) DisconnectPeersFromChannel(peers []string, proto
 			continue
 		}
 		conn.Terminate()
-		log.Debugf("Connection terminated %v for protocol %v", conn.PeerId.Pretty(), protocolType)
+		log.Debugf("Connection terminated %v (protocol %v)", conn.PeerId.Pretty(), protocolType)
 		delete(peerService.connections[protocolType], conn.PeerId.Pretty())
 	}
 }
@@ -115,7 +115,7 @@ func (peerService *PeerService) DisconnectChannel(protocolType byte) {
 
 	for peerId, conn := range peerService.connections[protocolType] {
 		conn.Terminate()
-		log.Debugf("Connection terminated %v for protocol %v", peerId, protocolType)
+		log.Debugf("Connection terminated %v (protocol %v)", peerId, protocolType)
 	}
 	peerService.connections[protocolType] = make(map[string]*connection.Connection)
 }
@@ -137,7 +137,7 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr, protoc
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
-	log.Tracef("Connected to peer %v with protocol %v", id.Pretty(), protocolType)
+	log.Tracef("Connected to peer %v (protocol %v)", id.Pretty(), protocolType)
 	peerService.connections[protocolType][id.Pretty()] = conn
 }
 
@@ -156,7 +156,7 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 		log.Debugf("Cannot connect to peer %v, invalid protocol", id)
 		return
 	}
-	log.Tracef("Got incoming stream from %v (%v) with protocol %v", id, stream.Conn().RemoteMultiaddr().String(), protocolType)
+	log.Tracef("Got incoming stream from %v (%v) (protocol %v)", id, stream.Conn().RemoteMultiaddr().String(), protocolType)
 	if conn, ok := peerService.connections[protocolType][id]; ok {
 		conn.SetInboundStream(stream)
 		return
@@ -182,7 +182,7 @@ func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection
 		panic(err)
 	}
 	log.Debugf(
-		"Sending %v postponed messages to peer %v with protocol %v with freshly recovered key %v", 
+		"Sending %v postponed messages to peer %v (protocol %v) with freshly recovered key %v", 
 		len(peerService.messages[protocolType][publicKey]), conn.PeerId.Pretty(), protocolType, publicKey,
 	)
 	for _, msg := range peerService.messages[protocolType][publicKey] {
@@ -208,7 +208,7 @@ func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata, 
 			continue
 		}
 		if conn, ok := peerService.connections[protocolType][newPeer.Id.Pretty()]; ok {
-			log.Tracef("Peer %v already has connection", newPeer.Id.Pretty())
+			log.Tracef("Peer %v (protcol %v) already has connection", newPeer.Id.Pretty(), protocolType)
 			if newPeer.Addr != nil {
 				conn.SetPeerAddress(newPeer.Addr)
 			}
@@ -220,6 +220,7 @@ func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata, 
 			peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 			peerService.AvailableRelays, peerService.GetPeers,
 		)
+		log.Tracef("Connected to peer %v (protocol %v)", newPeer.Id.Pretty(), protocolType)
 	}
 }
 
@@ -294,7 +295,7 @@ func (peerService *PeerService) SendMessageToPeer(publicKey string, protocolType
 		conn.Send(msg)
 		return true
 	}
-	log.Tracef("Postponed message to peer %v with protocol %v. Message length %d", publicKey, protocolType, len(msg))
+	log.Tracef("Postponed message to peer %v (protocol %v). Message length %d", publicKey, protocolType, len(msg))
 	peerService.storeMessage(publicKey, protocolType, msg)
 	return false
 }
@@ -306,7 +307,9 @@ func (peerService *PeerService) BroadcastMessage(protocolType byte, msg []byte) 
 		if !conn.IsActive() && len(conn.PeerPublicKey) > 0 {
 			continue
 		}
-		log.Tracef("Broadcasting to active peer %v (%v)", conn.PeerPublicKey, conn.PeerId.Pretty())
+		log.Tracef(
+			"Broadcasting to active peer %v (%v) (protocol %v)", conn.PeerPublicKey, conn.PeerId.Pretty(), protocolType,
+		)
 		conn.Send(msg)
 	}
 }
@@ -366,7 +369,7 @@ func (peerService *PeerService) Stop() {
 	for protocolType, connectionByProtocol := range peerService.connections {
 		for pubKey, conn := range connectionByProtocol {
 			conn.Terminate()
-			log.Debugf("Connection terminated %v for protocol %v", pubKey, protocolType)
+			log.Debugf("Connection terminated %v (protocol %v)", pubKey, protocolType)
 		}
 	}
 	peerService.connections = nil
