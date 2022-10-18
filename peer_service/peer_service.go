@@ -73,7 +73,7 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 
 	mAddrs := config.GetBootstrapMultiaddrs()
 	for i, bootstrapId := range config.GetBootstrapIDs() {
-		peerService.connect(bootstrapId, mAddrs[i], protocols.CommonChannel)
+		peerService.connect(bootstrapId, mAddrs[i], protocols.CommonChannel, peerService.Signature)
 	}
 	return peerService
 }
@@ -89,7 +89,7 @@ func (peerService *PeerService) ConnectPeersToChannel(peers []string, protocolTy
 
 		con := peerService.connectionByPublicKey(publicKey, protocols.CommonChannel)
 		if (con != nil) {
-			peerService.connect(con.PeerId, con.PeerAddress, protocolType)
+			peerService.connect(con.PeerId, con.PeerAddress, protocolType, peerService.Signature)
 		}
 	}
 }
@@ -120,7 +120,7 @@ func (peerService *PeerService) DisconnectChannel(protocolType byte) {
 	peerService.connections[protocolType] = make(map[string]*connection.Connection)
 }
 
-func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr, protocolType byte) {
+func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr, protocolType byte, signature []byte) {
 	if id == peerService.host.ID() {
 		return
 	}
@@ -133,7 +133,7 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr, protoc
 		panic(err)
 	}
 	conn := connection.New(
-		&peerService.host, id, protocolString, protocolType, peerService.myExternalAddress, address,  nil,
+		&peerService.host, id, protocolString, protocolType, peerService.myExternalAddress, address, signature,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
