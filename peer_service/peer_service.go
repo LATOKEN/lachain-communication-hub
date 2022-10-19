@@ -110,7 +110,6 @@ func (peerService *PeerService) DisconnectPeersFromChannel(peers []string, proto
 			continue
 		}
 		conn.Terminate()
-		log.Debugf("Connection terminated %v (protocol %v)", conn.PeerId.Pretty(), protocolType)
 		delete(peerService.connections[protocolType], conn.PeerId.Pretty())
 	}
 }
@@ -119,9 +118,8 @@ func (peerService *PeerService) DisconnectChannel(protocolType byte) {
 	peerService.lock()
 	defer peerService.unlock()
 
-	for peerId, conn := range peerService.connections[protocolType] {
+	for _, conn := range peerService.connections[protocolType] {
 		conn.Terminate()
-		log.Debugf("Connection terminated %v (protocol %v)", peerId, protocolType)
 	}
 	peerService.connections[protocolType] = make(map[string]*connection.Connection)
 }
@@ -374,10 +372,9 @@ func (peerService *PeerService) Stop() {
 	}
 	close(peerService.quit)
 	peerService.running = 0
-	for protocolType, connectionByProtocol := range peerService.connections {
-		for pubKey, conn := range connectionByProtocol {
+	for _, connectionByProtocol := range peerService.connections {
+		for _, conn := range connectionByProtocol {
 			conn.Terminate()
-			log.Debugf("Connection terminated %v (protocol %v)", pubKey, protocolType)
 		}
 	}
 	peerService.connections = nil

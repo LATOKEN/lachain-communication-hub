@@ -595,7 +595,7 @@ func (connection *Connection) resetOutboundStream() {
 	}
 	outboundReset.Inc()
 	log.Debugf(
-		"Resetting outbound stream to peer %s (protcol %v)", connection.outboundStream.Conn().RemotePeer().Pretty(),
+	"Resetting outbound stream to peer %s (protcol %v)", connection.outboundStream.Conn().RemotePeer().Pretty(),
 		connection.PeerProtocolType,
 	)
 	if err := connection.outboundStream.Reset(); err != nil {
@@ -605,6 +605,10 @@ func (connection *Connection) resetOutboundStream() {
 }
 
 func (connection *Connection) Terminate() {
+	go connection.tryTerminate()
+}
+
+func (connection *Connection) tryTerminate() {
 	connection.status.Store(Terminated)
 	connection.messageQueue.Enqueue(nil)
 	connection.resetInboundStream()
@@ -615,4 +619,5 @@ func (connection *Connection) Terminate() {
 	log.Debugf("SendCycle finished")
 	close(connection.peerCycleFinished)
 	log.Debugf("PeerCycle finished")
+	log.Tracef("connection to peer %v (protocol %v) terminated", connection.PeerId.Pretty(), connection.PeerProtocolType)
 }
