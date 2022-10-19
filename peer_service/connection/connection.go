@@ -87,26 +87,28 @@ type Connection struct {
 	outboundStream       network.Stream
 	streamLock           sync.Mutex
 	status               *atomic.Int32
-	onPeerListUpdate     func([]*Metadata)
+	onPeerListUpdate     func([]*Metadata, peer.ID)
 	onPublicKeyRecovered func(*Connection, string)
 	onMessage            func([]byte)
-	availableRelays      func() []peer.ID
-	getPeers             func() []*Metadata
+	availableRelays      func(byte, peer.ID) []peer.ID
+	getPeers             func(byte) []*Metadata
 	lifecycleFinished    chan struct{}
 	sendCycleFinished    chan struct{}
 	peerCycleFinished    chan struct{}
 	inboundTPS           *throughput.Calculator
 	outboundTPS          *throughput.Calculator
+	PeerProtocolType	 byte
 }
 
 func (connection *Connection) init(
-	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr,
-	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
-	availableRelays func() []peer.ID, getPeers func() []*Metadata,
+	host *core.Host, id peer.ID, protocol string, protocolType byte,  myAddress ma.Multiaddr,
+	onPeerListUpdate func([]*Metadata, peer.ID), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
+	availableRelays func(byte, peer.ID) []peer.ID, getPeers func(byte) []*Metadata,
 ) {
 	connection.host = host
 	connection.PeerId = id
 	connection.PeerProtocol = protocol
+	connection.PeerProtocolType = protocolType
 	connection.lifecycleFinished = make(chan struct{})
 	connection.sendCycleFinished = make(chan struct{})
 	connection.peerCycleFinished = make(chan struct{})
@@ -124,14 +126,14 @@ func (connection *Connection) init(
 }
 
 func New(
-	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr, peerAddress ma.Multiaddr,
+	host *core.Host, id peer.ID, protocol string, protocolType byte, myAddress ma.Multiaddr, peerAddress ma.Multiaddr,
 	signature []byte,
-	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
-	availableRelays func() []peer.ID, getPeers func() []*Metadata,
+	onPeerListUpdate func([]*Metadata, peer.ID), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
+	availableRelays func(byte, peer.ID) []peer.ID, getPeers func(byte) []*Metadata,
 ) *Connection {
-	log.Debugf("Creating connection with peer %v (address %v)", id.Pretty(), peerAddress.String())
+	log.Debugf("Creating connection with peer %v (address %v) (protcol %v)", id.Pretty(), peerAddress.String(), protocolType)
 	connection := new(Connection)
-	connection.init(host, id, protocol, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
+	connection.init(host, id, protocol, protocolType, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
 	connection.PeerAddress = peerAddress
 	go connection.receiveMessageCycle()
 	go connection.sendMessageCycle()
@@ -143,13 +145,13 @@ func New(
 }
 
 func FromStream(
-	host *core.Host, stream network.Stream, myAddress ma.Multiaddr, signature []byte, protocol string,
-	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
-	availableRelays func() []peer.ID, getPeers func() []*Metadata,
+	host *core.Host, stream network.Stream, myAddress ma.Multiaddr, signature []byte, protocol string, protocolType byte,
+	onPeerListUpdate func([]*Metadata, peer.ID), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
+	availableRelays func(byte, peer.ID) []peer.ID, getPeers func(byte) []*Metadata,
 ) *Connection {
 	log.Debugf("Creating connection with peer %v from inbound stream", stream.Conn().RemotePeer().Pretty())
 	connection := new(Connection)
-	connection.init(host, stream.Conn().RemotePeer(), protocol, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
+	connection.init(host, stream.Conn().RemotePeer(), protocol, protocolType, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
 	connection.PeerAddress = stream.Conn().RemoteMultiaddr()
 	connection.inboundStream = stream
 	if signature != nil {
@@ -176,7 +178,10 @@ func (connection *Connection) receiveMessageCycle() {
 			frame, err := communication.ReadOnce(connection.inboundStream)
 			if err != nil {
 				receiveErrors.WithLabelValues(err.Error()).Inc()
-				log.Errorf("Skipped message from peer %v, resetting connection: %v", connection.PeerId.Pretty(), err)
+				log.Errorf(
+					"Skipped message from peer %v (protocol %v), resetting connection: %v", connection.PeerId.Pretty(),
+					connection.PeerProtocolType, err,
+				)
 				connection.resetInboundStream()
 				continue
 			}
@@ -185,6 +190,7 @@ func (connection *Connection) receiveMessageCycle() {
 			switch frame.Kind() {
 			case communication.Message:
 				inboundMessages.WithLabelValues("message").Inc()
+				log.Tracef("Incomming message from peer %v (protocol %v)", connection.PeerId.Pretty(), connection.PeerProtocolType)
 				connection.onMessage(frame.Data())
 				break
 			case communication.Signature:
@@ -216,7 +222,10 @@ func (connection *Connection) sendMessageCycle() {
 	connection.signatureSent.Store(0)
 	for connection.status.Load() != Terminated {
 		if err := connection.checkOutboundStream(); err != nil {
-			log.Tracef("Can't connect to peer %v, will retry in %v", connection.PeerId, openStreamBackoff)
+			log.Tracef(
+				"Can't connect to peer %v (protocol %v), will retry in %v", connection.PeerId, 
+				connection.PeerProtocolType, openStreamBackoff,
+			)
 			time.Sleep(openStreamBackoff)
 			if openStreamBackoff < time.Minute {
 				openStreamBackoff *= 2
@@ -234,10 +243,14 @@ func (connection *Connection) sendMessageCycle() {
 			value, err := connection.messageQueue.DequeueOrWait()
 			messagesInQueue.WithLabelValues(connection.PeerId.Pretty()).Set(float64(connection.messageQueue.GetLen()))
 			if err != nil {
-				log.Errorf("Failed to wait for message to send to peer %v: %v", connection.PeerId.Pretty(), err)
+				log.Errorf("Failed to wait for message to send to peer %v (protocol %v): %v", 
+				connection.PeerId.Pretty(), connection.PeerProtocolType, err,
+			)
 			}
 			if value == nil {
-				log.Tracef("Got terminating message, finishing send cycle for peer %v", connection.PeerId.Pretty())
+				log.Tracef("Got terminating message, finishing send cycle for peer %v (protocol %v)", 
+				connection.PeerId.Pretty(), connection.PeerProtocolType,
+			)
 				break
 			}
 			msgToSend = value
@@ -253,7 +266,10 @@ func (connection *Connection) sendMessageCycle() {
 			if err == nil {
 				resendAttempts.Observe(float64(attempts))
 				attempts = 0
-				//log.Tracef("Sent message (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
+				log.Tracef(
+					"Sent message (len = %d bytes) to peer %v (protocol %v)", len(frame.Data()), connection.PeerId.Pretty(),
+					connection.PeerProtocolType,
+				)
 				connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
 				sendBackoff = time.Millisecond
 				msgToSend = nil
@@ -261,19 +277,28 @@ func (connection *Connection) sendMessageCycle() {
 				continue
 			}
 			sendErrors.WithLabelValues(err.Error()).Inc()
-			log.Errorf("Error while sending message (len = %d bytes) to peer %v: %v", len(frame.Data()), connection.PeerId.Pretty(), err)
+			log.Errorf(
+				"Error while sending message (len = %d bytes) to peer %v (protocol %v): %v", len(frame.Data()), 
+				connection.PeerId.Pretty(), connection.PeerProtocolType, err,
+			)
 			connection.resetOutboundStream()
 		}
-		log.Tracef("Outbound stream for peer %v is not ready", connection.PeerId.Pretty())
+		log.Tracef("Outbound stream for peer %v (protocol %v) is not ready", connection.PeerId.Pretty(), connection.PeerProtocolType)
 		if time.Now().Sub(lastSuccess) < disconnectThreshold {
-			log.Tracef("Resending message to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), sendBackoff, connection.outboundStream == nil)
+			log.Tracef(
+				"Resending message to peer %v (protocol %v) in %v (nil stream: %v)", connection.PeerId.Pretty(), 
+				connection.PeerProtocolType, sendBackoff, connection.outboundStream == nil,
+			)
 			time.Sleep(sendBackoff)
 			if sendBackoff < time.Second {
 				sendBackoff *= 2
 			}
 		} else {
 			droppedMessages.Add(float64(connection.messageQueue.GetLen() + 1))
-			log.Warningf("Can't send message to peer %v for more than %v, cleaning messages", connection.PeerId.Pretty(), disconnectThreshold)
+			log.Warningf(
+				"Can't send message to peer %v (protocol %v) for more than %v, cleaning messages", connection.PeerId.Pretty(), 
+				connection.PeerProtocolType, disconnectThreshold,
+			)
 			connection.messageQueue.Clear()
 			msgToSend = nil
 		}
@@ -295,7 +320,10 @@ func (connection *Connection) sendPeersCycle() {
 
 func (connection *Connection) Send(msg []byte) {
 	if msg == nil {
-		log.Errorf("Got empty message to send to peer %v, ignoring", connection.PeerId.Pretty())
+		log.Errorf(
+			"Got empty message to send to peer %v (protocol %v), ignoring", connection.PeerId.Pretty(), 
+			connection.PeerProtocolType,
+		)
 		return
 	}
 
@@ -304,7 +332,7 @@ func (connection *Connection) Send(msg []byte) {
 }
 
 func (connection *Connection) sendSignature() {
-	log.Debugf("Sending signature to peer %v", connection.PeerId.Pretty())
+	log.Debugf("Sending signature to peer %v (protcol %v)", connection.PeerId.Pretty(), connection.PeerProtocolType)
 	backoff := time.Second
 	for connection.status.Load() != Terminated {
 		if connection.outboundStream != nil {
@@ -324,14 +352,23 @@ func (connection *Connection) sendSignature() {
 			err := communication.Write(connection.outboundStream, frame)
 			connection.streamLock.Unlock()
 			if err == nil {
-				log.Tracef("Sent signature (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
+				log.Tracef(
+					"Sent signature (len = %d bytes) to peer %v (protcol %v)", len(frame.Data()), connection.PeerId.Pretty(),
+					connection.PeerProtocolType,
+				)
 				connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
 				backoff = time.Second
 				break
 			}
-			log.Errorf("Error while sending signature (len = %d bytes) to peer %v: %v", len(frame.Data()), connection.PeerId.Pretty(), err)
+			log.Errorf(
+				"Error while sending signature (len = %d bytes) to peer %v (protcol %v): %v", len(frame.Data()),
+				connection.PeerId.Pretty(), connection.PeerProtocolType, err,
+			)
 		}
-		log.Tracef("Resending signature to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), backoff, connection.outboundStream == nil)
+		log.Tracef(
+			"Resending signature to peer %v (protcol %v) in %v (nil stream: %v)", connection.PeerId.Pretty(),
+			connection.PeerProtocolType, backoff, connection.outboundStream == nil,
+		)
 		time.Sleep(backoff)
 		if backoff < time.Minute {
 			backoff *= 2
@@ -357,23 +394,35 @@ func (connection *Connection) handleSignature(data []byte) {
 	signature, addressBytes := data[:sigLen], data[sigLen:]
 	peerIdBytes, err := connection.PeerId.Marshal()
 	if err != nil {
-		log.Errorf("Cannot create payload for signature check fr7om peer %v: %v", connection.PeerId.Pretty(), err)
+		log.Errorf(
+			"Cannot create payload for signature check fr7om peer %v (protcol %v): %v", connection.PeerId.Pretty(),
+			connection.PeerProtocolType, err,
+		)
 		return
 	}
 	publicKey, err := utils.EcRecover(peerIdBytes, signature, config.ChainId)
 	if err != nil {
-		log.Errorf("Signature check failed for peer %v, resetting connection: %v", connection.PeerId.Pretty(), err)
+		log.Errorf(
+			"Signature check failed for peer %v (protcol %v), resetting connection: %v", connection.PeerId.Pretty(),
+			connection.PeerProtocolType, err,
+		)
 		connection.resetInboundStream()
 		return
 	}
 	address, err := ma.NewMultiaddrBytes(addressBytes)
 	if err != nil {
-		log.Errorf("Peer %v sent incorrect address, resetting connection: %v", connection.PeerId.Pretty(), err)
+		log.Errorf(
+			"Peer %v (protcol %v) sent incorrect address, resetting connection: %v", connection.PeerId.Pretty(),
+			connection.PeerProtocolType, err,
+		)
 		connection.resetInboundStream()
 		return
 	}
 	connection.PeerPublicKey = utils.PublicKeyToHexString(publicKey)
-	log.Tracef("Recovered public key %v for peer %v from signature", connection.PeerPublicKey, connection.PeerId.Pretty())
+	log.Tracef(
+		"Recovered public key %v for peer %v (protcol %v) from signature", connection.PeerPublicKey, connection.PeerId.Pretty(),
+		connection.PeerProtocolType,
+	)
 	connection.PeerAddress = address
 	connection.status.CAS(NotConnected, HandshakeComplete)
 	connection.status.CAS(JustConnected, HandshakeComplete)
@@ -382,7 +431,7 @@ func (connection *Connection) handleSignature(data []byte) {
 
 func (connection *Connection) sendPeers() {
 	if connection.outboundStream != nil {
-		peerConnections := connection.getPeers()
+		peerConnections := connection.getPeers(connection.PeerProtocolType)
 		if len(peerConnections) == 0 {
 			return
 		}
@@ -392,20 +441,30 @@ func (connection *Connection) sendPeers() {
 		err := communication.Write(connection.outboundStream, frame)
 		connection.streamLock.Unlock()
 		if err != nil {
-			log.Warningf("Cannot send peer list (len = %d bytes) to peer %v: %v", len(msg), connection.PeerId.Pretty(), err)
+			log.Warningf(
+				"Cannot send peer list (len = %d bytes) to peer %v (protcol %v): %v", len(msg), connection.PeerId.Pretty(),
+				connection.PeerProtocolType, err,
+			)
 		} else {
-			log.Tracef("Sent peer list (len = %d bytes) to peer %v", len(msg), connection.PeerId.Pretty())
+			log.Tracef(
+				"Sent peer list (len = %d bytes) to peer %v (protcol %v)", len(msg), connection.PeerId.Pretty(),
+				connection.PeerProtocolType,
+			)
 			connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
 		}
 		return
 	}
-	log.Warningf("Cannot send peer list to peer %v: no connection yet", connection.PeerId.Pretty())
+	log.Warningf(
+		"Cannot send peer list to peer %v (protcol %v): no connection yet", connection.PeerId.Pretty(), connection.PeerProtocolType,
+	)
 }
 
 func (connection *Connection) handlePeers(data []byte) {
 	peerConnections := DecodeArray(data)
-	log.Debugf("Received %v peers from peer %v", len(peerConnections), connection.PeerId.Pretty())
-	connection.onPeerListUpdate(peerConnections)
+	log.Debugf(
+		"Received %v peers from peer %v (protcol %v)", len(peerConnections), connection.PeerId.Pretty(), connection.PeerProtocolType,
+	)
+	connection.onPeerListUpdate(peerConnections, connection.PeerId)
 }
 
 func (connection *Connection) connect(peerId peer.ID, peerAddress ma.Multiaddr) error {
@@ -422,12 +481,14 @@ func (connection *Connection) connect(peerId peer.ID, peerAddress ma.Multiaddr) 
 	}
 
 	errCount := 0
-	peers := append([]peer.ID(nil), connection.availableRelays()...)
+	peers := append([]peer.ID(nil), connection.availableRelays(connection.PeerProtocolType, connection.PeerId)...)
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(peers), func(i, j int) { peers[i], peers[j] = peers[j], peers[i] })
 	for _, connectedPeerId := range peers {
 		if err := connection.connectToPeerUsingRelay(connectedPeerId, peerId); err != nil {
-			log.Debugf("Can't connect to %v through %v: %v", peerAddress, connectedPeerId, err)
+			log.Debugf(
+				"Can't connect to %v through %v (protcol %v): %v", peerAddress, connectedPeerId, connection.PeerProtocolType, err,
+			)
 			errCount++
 			if errCount == MaxTryToConnect {
 				return errors.New("cant_connect")
@@ -459,7 +520,9 @@ func (connection *Connection) SetInboundStream(stream network.Stream) {
 	if connection.status.Load() == Terminated {
 		return
 	}
-	log.Tracef("Updating stream for connection with peer %v", stream.Conn().RemotePeer().Pretty())
+	log.Tracef(
+		"Updating stream for connection with peer %v (protcol %v)", stream.Conn().RemotePeer().Pretty(), connection.PeerProtocolType,
+	)
 	connection.streamLock.Lock()
 	defer connection.streamLock.Unlock()
 	if connection.inboundStream != nil {
@@ -479,7 +542,10 @@ func (connection *Connection) checkOutboundStream() error {
 	defer connection.streamLock.Unlock()
 	state := (*connection.host).Network().Connectedness(connection.PeerId)
 	if state != network.Connected {
-		log.Debugf("Peer %v lacks connectedness (%v), calling connect", connection.PeerId.Pretty(), state)
+		log.Debugf(
+			"Peer %v (protcol %v) lacks connectedness (%v), calling connect", connection.PeerId.Pretty(), connection.PeerProtocolType, 
+			state,
+		)
 		// Since we just tried and failed to dial, the dialer system will, by default
 		// prevent us from redialing again so quickly. Since we know what we're doing, we
 		// can use this ugly hack (it's on our TODO list to make it a little cleaner)
@@ -494,7 +560,7 @@ func (connection *Connection) checkOutboundStream() error {
 		connection.signatureSent.Store(0)
 	}
 	if connection.outboundStream == nil {
-		log.Debugf("Peer %v has no stream, creating one", connection.PeerId.Pretty())
+		log.Debugf("Peer %v (protcol %v) has no stream, creating one", connection.PeerId.Pretty(), connection.PeerProtocolType)
 		stream, err := (*connection.host).NewStream(context.Background(), connection.PeerId,
 			protocol.ID(connection.PeerProtocol))
 		if err != nil {
@@ -513,7 +579,10 @@ func (connection *Connection) resetInboundStream() {
 		return
 	}
 	inboundReset.Inc()
-	log.Debugf("Resetting inbound stream to peer %s", connection.inboundStream.Conn().RemotePeer().Pretty())
+	log.Debugf(
+		"Resetting inbound stream to peer %s (protcol %v)", connection.inboundStream.Conn().RemotePeer().Pretty(),
+		connection.PeerProtocolType,
+	)
 	if err := connection.inboundStream.Reset(); err != nil {
 		log.Errorf("Failed to reset stream: %v", err)
 	}
@@ -525,7 +594,10 @@ func (connection *Connection) resetOutboundStream() {
 		return
 	}
 	outboundReset.Inc()
-	log.Debugf("Resetting outbound stream to peer %s", connection.outboundStream.Conn().RemotePeer().Pretty())
+	log.Debugf(
+		"Resetting outbound stream to peer %s (protcol %v)", connection.outboundStream.Conn().RemotePeer().Pretty(),
+		connection.PeerProtocolType,
+	)
 	if err := connection.outboundStream.Reset(); err != nil {
 		log.Errorf("Failed to reset stream: %v", err)
 	}
@@ -533,6 +605,10 @@ func (connection *Connection) resetOutboundStream() {
 }
 
 func (connection *Connection) Terminate() {
+	go connection.tryTerminate()
+}
+
+func (connection *Connection) tryTerminate() {
 	connection.status.Store(Terminated)
 	connection.messageQueue.Enqueue(nil)
 	connection.resetInboundStream()
@@ -543,4 +619,5 @@ func (connection *Connection) Terminate() {
 	log.Debugf("SendCycle finished")
 	close(connection.peerCycleFinished)
 	log.Debugf("PeerCycle finished")
+	log.Tracef("connection to peer %v (protocol %v) terminated", connection.PeerId.Pretty(), connection.PeerProtocolType)
 }
