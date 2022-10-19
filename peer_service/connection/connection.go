@@ -595,7 +595,7 @@ func (connection *Connection) resetOutboundStream() {
 	}
 	outboundReset.Inc()
 	log.Debugf(
-	"Resetting outbound stream to peer %s (protcol %v)", connection.outboundStream.Conn().RemotePeer().Pretty(),
+		"Resetting outbound stream to peer %s (protcol %v)", connection.outboundStream.Conn().RemotePeer().Pretty(),
 		connection.PeerProtocolType,
 	)
 	if err := connection.outboundStream.Reset(); err != nil {
