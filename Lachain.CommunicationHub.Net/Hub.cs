@@ -139,14 +139,14 @@ namespace Lachain.CommunicationHub.Net
             }
         }
 
-        public static void Send(byte[] publicKey, byte[] data)
+        public static void Send(byte[] publicKey, byte[] data, int flag)
         {
             unsafe
             {
                 fixed (byte* publicKeyPtr = publicKey)
                 fixed (byte* dataPtr = data)
                 {
-                    Imports.SendMessage.Value(publicKeyPtr, publicKey.Length, dataPtr, data.Length);
+                    Imports.SendMessage.Value(publicKeyPtr, publicKey.Length, dataPtr, data.Length, flag);
                 }
             }
         }

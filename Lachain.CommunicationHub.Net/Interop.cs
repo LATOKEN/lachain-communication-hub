@@ -14,7 +14,7 @@ namespace Lachain.CommunicationHub.Net
     [SymbolName("SendMessage")]
     public unsafe delegate int HubSendMessage(
         byte* pubKey, int pubKeyLen,
-        byte* data, int dataLen
+        byte* data, int dataLen, int flag
     );
     
     [SymbolName("GetMessages")]

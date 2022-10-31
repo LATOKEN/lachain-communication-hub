@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"lachain-communication-hub/communication"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/peer_service"
 	"net"
@@ -134,18 +135,25 @@ func Init(signaturePtr unsafe.Pointer, signatureLength C.int, metricsPort C.int)
 }
 
 //export SendMessage
-func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Pointer, dataLen C.int) {
+func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Pointer, dataLen C.int, flag C.int) {
 	mutex.Lock()
 	defer mutex.Unlock()
 	pubKey := C.GoBytes(pubKeyPtr, pubKeyLen)
 	data := C.GoBytes(dataPtr, dataLen)
 	//log.Tracef("SendMessage command to send %d bytes to %s", dataLen, hex.EncodeToString(pubKey))
 
+	var consensus bool
+	if flag == 0 {
+		consensus = false
+	} else {
+		consensus = true
+	}
+	message := communication.NewEnvelop(data, consensus)
 	if bytes.Equal(pubKey, ZeroPub) {
-		localPeer.BroadcastMessage(data)
+		localPeer.BroadcastMessage(message)
 	} else {
 		pub := hex.EncodeToString(pubKey)
-		localPeer.SendMessageToPeer(pub, data)
+		localPeer.SendMessageToPeer(pub, message)
 	}
 }
 
