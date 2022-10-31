@@ -23,9 +23,29 @@ const (
 	GetPeersReply   = 2
 )
 
+type MessageEnvelop struct {
+	consensus bool
+	data 	  []byte
+}
+
 type MessageFrame struct {
 	kind FrameKind
 	data []byte
+}
+
+func NewEnvelop(data []byte, consensus bool) MessageEnvelop {
+	return MessageEnvelop {
+		consensus: consensus,
+		data: data,
+	}
+}
+
+func (envelop *MessageEnvelop) IsConsensus() bool {
+	return envelop.consensus
+}
+
+func (envelop *MessageEnvelop) Data() []byte {
+	return envelop.data
 }
 
 func NewFrame(kind FrameKind, data []byte) MessageFrame {
