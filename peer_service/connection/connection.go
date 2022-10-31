@@ -26,6 +26,7 @@ import (
 var log = loggo.GetLogger("connection")
 
 type Status int
+type Envelop = communication.MessageEnvelop
 
 const (
 	NotConnected      = iota
@@ -236,11 +237,11 @@ func (connection *Connection) sendMessageCycle() {
 			if err != nil {
 				log.Errorf("Failed to wait for message to send to peer %v: %v", connection.PeerId.Pretty(), err)
 			}
-			if value == nil {
+			if value.Data() == nil {
 				log.Tracef("Got terminating message, finishing send cycle for peer %v", connection.PeerId.Pretty())
 				break
 			}
-			msgToSend = value
+			msgToSend = value.Data()
 			lastSuccess = time.Now() // reset last success since we got new message
 		}
 
@@ -293,8 +294,8 @@ func (connection *Connection) sendPeersCycle() {
 	}
 }
 
-func (connection *Connection) Send(msg []byte) {
-	if msg == nil {
+func (connection *Connection) Send(msg Envelop) {
+	if msg.Data() == nil {
 		log.Errorf("Got empty message to send to peer %v, ignoring", connection.PeerId.Pretty())
 		return
 	}
@@ -534,7 +535,7 @@ func (connection *Connection) resetOutboundStream() {
 
 func (connection *Connection) Terminate() {
 	connection.status.Store(Terminated)
-	connection.messageQueue.Enqueue(nil)
+	connection.messageQueue.Enqueue(communication.NewEnvelop(nil, false))
 	connection.resetInboundStream()
 	connection.resetOutboundStream()
 	<-connection.lifecycleFinished
