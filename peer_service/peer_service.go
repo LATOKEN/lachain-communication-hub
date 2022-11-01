@@ -3,7 +3,6 @@ package peer_service
 import (
 	"errors"
 	"fmt"
-	"lachain-communication-hub/communication"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/host"
 	"lachain-communication-hub/peer_service/connection"
@@ -23,7 +22,7 @@ import (
 var log = loggo.GetLogger("peer_service")
 var protocolFormat = "%s %d"
 
-type Envelop = communication.MessageEnvelop
+type Envelop = utils.MessageEnvelop
 
 type PeerService struct {
 	host              core.Host

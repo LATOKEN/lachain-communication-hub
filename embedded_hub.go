@@ -8,9 +8,9 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"lachain-communication-hub/communication"
 	"lachain-communication-hub/config"
 	"lachain-communication-hub/peer_service"
+	"lachain-communication-hub/utils"
 	"net"
 	"net/http"
 	"os"
@@ -148,7 +148,7 @@ func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Point
 	} else {
 		consensus = true
 	}
-	message := communication.NewEnvelop(data, consensus)
+	message := utils.NewEnvelop(data, consensus)
 	if bytes.Equal(pubKey, ZeroPub) {
 		localPeer.BroadcastMessage(message)
 	} else {

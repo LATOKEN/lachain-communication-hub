@@ -26,7 +26,7 @@ import (
 var log = loggo.GetLogger("connection")
 
 type Status int
-type Envelop = communication.MessageEnvelop
+type Envelop = utils.MessageEnvelop
 
 const (
 	NotConnected      = iota
@@ -535,7 +535,7 @@ func (connection *Connection) resetOutboundStream() {
 
 func (connection *Connection) Terminate() {
 	connection.status.Store(Terminated)
-	connection.messageQueue.Enqueue(communication.NewEnvelop(nil, false))
+	connection.messageQueue.Enqueue(utils.NewEnvelop(nil, false))
 	connection.resetInboundStream()
 	connection.resetOutboundStream()
 	<-connection.lifecycleFinished
