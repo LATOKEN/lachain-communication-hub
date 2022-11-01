@@ -18,9 +18,11 @@ func (MsgIntegrityError) Error() string {
 type FrameKind byte
 
 const (
-	Message         = 0
-	Signature       = 1
-	GetPeersReply   = 2
+	Message         		= 0
+	Signature       		= 1
+	GetPeersReply   		= 2
+	MessageConfirmRequest	= 3
+	ConfirmReply			= 4
 )
 
 type MessageFrame struct {
