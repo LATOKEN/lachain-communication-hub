@@ -3,6 +3,13 @@ package peer_service
 import (
 	"errors"
 	"fmt"
+	"lachain-communication-hub/config"
+	"lachain-communication-hub/host"
+	"lachain-communication-hub/peer_service/connection"
+	"lachain-communication-hub/utils"
+	"strings"
+	"sync"
+
 	"github.com/juju/loggo"
 	core "github.com/libp2p/go-libp2p-core"
 	"github.com/libp2p/go-libp2p-core/crypto"
@@ -10,22 +17,18 @@ import (
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
 	ma "github.com/multiformats/go-multiaddr"
-	"lachain-communication-hub/config"
-	"lachain-communication-hub/host"
-	"lachain-communication-hub/peer_service/connection"
-	"lachain-communication-hub/utils"
-	"strings"
-	"sync"
 )
 
 var log = loggo.GetLogger("peer_service")
 var protocolFormat = "%s %d"
 
+type Envelop = utils.MessageEnvelop
+
 type PeerService struct {
 	host              core.Host
 	myExternalAddress ma.Multiaddr
 	connections       map[string]*connection.Connection
-	messages          map[string][][]byte
+	messages          map[string][]Envelop
 	mutex             *sync.Mutex
 	msgHandler        func([]byte)
 	running           int32
@@ -47,7 +50,7 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	peerService := new(PeerService)
 	peerService.host = localHost
 	peerService.connections = make(map[string]*connection.Connection)
-	peerService.messages = make(map[string][][]byte)
+	peerService.messages = make(map[string][]Envelop)
 	peerService.mutex = mut
 	peerService.running = 1
 	peerService.quit = make(chan struct{})
@@ -226,7 +229,7 @@ func (peerService *PeerService) connectionByPublicKey(publicKey string) *connect
 	return nil
 }
 
-func (peerService *PeerService) SendMessageToPeer(publicKey string, msg []byte) bool {
+func (peerService *PeerService) SendMessageToPeer(publicKey string, msg Envelop) bool {
 	peerService.lock()
 	defer peerService.unlock()
 
@@ -235,12 +238,12 @@ func (peerService *PeerService) SendMessageToPeer(publicKey string, msg []byte) 
 		conn.Send(msg)
 		return true
 	}
-	log.Tracef("Postponed message to peer %v message length %d", publicKey, len(msg))
+	log.Tracef("Postponed message to peer %v message length %d", publicKey, len(msg.Data()))
 	peerService.storeMessage(publicKey, msg)
 	return false
 }
 
-func (peerService *PeerService) BroadcastMessage(msg []byte) {
+func (peerService *PeerService) BroadcastMessage(msg Envelop) {
 	peerService.lock()
 	defer peerService.unlock()
 	for _, conn := range peerService.connections {
@@ -330,7 +333,7 @@ func (peerService *PeerService) Stop() {
 	log.Debugf("Closed host")
 }
 
-func (peerService *PeerService) storeMessage(key string, msg []byte) {
+func (peerService *PeerService) storeMessage(key string, msg Envelop) {
 	if conn := peerService.connectionByPublicKey(key); conn != nil {
 		conn.Send(msg)
 	} else {
