@@ -49,16 +49,16 @@ func NewFrameWithId(kind FrameKind, data []byte, msgId uint64) MessageFrame {
 }
 
 func (frame *MessageFrame) Encode() []byte {
-	msgLength := 1 + 8 + len(frame.data) + 4	// kind + msgId + data + crc32
 	kindLen := 1
 	msgIdLen := 8
+	msgLength := kindLen + msgIdLen + len(frame.data) + 4	// kind + msgId + data + crc32
 	buf := make([]byte, 4 + msgLength)	// to avoid reallocation, 4 extra bytes to put the length of the whole msg
 	offset := 0
 	binary.LittleEndian.PutUint32(buf[offset:offset+4], uint32(msgLength))
 	offset += 4
 	buf[offset] = byte(frame.kind)
 	offset += kindLen
-	binary.LittleEndian.PutUint64(buf[offset:offset+8], frame.msgId)
+	binary.LittleEndian.PutUint64(buf[offset:offset+msgLength], frame.msgId)
 	offset += msgIdLen
 	copy(buf[offset:], frame.data)
 	offset += len(frame.data)
