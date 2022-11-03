@@ -84,6 +84,7 @@ type Connection struct {
 	signature            []byte
 	signatureSent        *atomic.Int32
 	messageQueue         *utils.MessageQueue
+	confirmReceived		 map[uint64]bool
 	inboundStream        network.Stream
 	outboundStream       network.Stream
 	streamLock           sync.Mutex
@@ -115,6 +116,7 @@ func (connection *Connection) init(
 	connection.signatureSent = atomic.NewInt32(0)
 	connection.status = atomic.NewInt32(NotConnected)
 	connection.messageQueue = utils.NewMessageQueue()
+	connection.confirmReceived = make(map[uint64]bool)
 	connection.onPeerListUpdate = onPeerListUpdate
 	connection.onPublicKeyRecovered = onPublicKeyRecovered
 	connection.onMessage = onMessage
@@ -184,6 +186,25 @@ func (connection *Connection) receiveMessageCycle() {
 			connection.inboundTPS.AddMeasurement(float64(len(frame.Data())))
 
 			switch frame.Kind() {
+			case communication.ConfirmReply:
+				inboundMessages.WithLabelValues("confirmReply").Inc()
+				msgId := frame.MsgId()
+				_, ok := connection.confirmReceived[msgId]
+				if !ok {
+					log.Warningf(
+						"Got confirm message from peer %v with msgId %v. But we never sent message with this msgId", 
+						connection.PeerId.Pretty(), msgId,
+					)
+				} else {
+					connection.confirmReceived[msgId] = true
+				}
+				break
+			case communication.MessageConfirmRequest:
+				inboundMessages.WithLabelValues("messageConfirmRequest").Inc()
+				reply := utils.NewEnvelopWithId(make([]byte, 1), utils.ConfirmReply, frame.MsgId())
+				connection.addToQueue(reply)
+				connection.onMessage(frame.Data())
+				break
 			case communication.Message:
 				inboundMessages.WithLabelValues("message").Inc()
 				connection.onMessage(frame.Data())
@@ -212,6 +233,8 @@ func (connection *Connection) sendMessageCycle() {
 	openStreamBackoff := time.Second
 	sendBackoff := time.Millisecond
 	var msgToSend []byte = nil
+	var msgKind utils.MessageKind = utils.Message
+	var msgId uint64 = 0
 	attempts := 0
 
 	connection.signatureSent.Store(0)
@@ -242,12 +265,39 @@ func (connection *Connection) sendMessageCycle() {
 				break
 			}
 			msgToSend = value.Data()
+			msgKind = value.Kind()
+			msgId = value.MsgId()
 			lastSuccess = time.Now() // reset last success since we got new message
 		}
 
 		attempts += 1
 		if connection.outboundStream != nil {
-			frame := communication.NewFrame(communication.Message, msgToSend)
+			var frame communication.MessageFrame
+			switch msgKind {
+			case utils.Message:
+				frame = communication.NewFrameWithId(communication.Message, msgToSend, msgId)
+				break
+			case utils.ConfirmReply:
+				frame = communication.NewFrameWithId(communication.ConfirmReply, msgToSend, msgId)
+				break
+			case utils.Consensus:
+				confirm, ok := connection.confirmReceived[msgId]
+				if ok && confirm {	// we already sent this msg and received confirmation
+					attempts = 0
+					msgToSend = nil
+					msgKind = utils.Message
+					msgId = 0
+					sendBackoff = time.Millisecond
+					lastSuccess = time.Now()
+					delete(connection.confirmReceived, msgId)
+					continue
+				}
+				frame = communication.NewFrameWithId(communication.MessageConfirmRequest, msgToSend, msgId)
+				if !ok {
+					connection.confirmReceived[msgId] = false
+				}
+				break
+			}
 			connection.streamLock.Lock()
 			err := communication.Write(connection.outboundStream, frame)
 			connection.streamLock.Unlock()
@@ -256,8 +306,14 @@ func (connection *Connection) sendMessageCycle() {
 				attempts = 0
 				//log.Tracef("Sent message (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
 				connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
+				if msgKind == utils.Consensus {
+					repeatedMsg := utils.NewEnvelopWithId(msgToSend, msgKind, msgId)
+					connection.addToQueue(repeatedMsg)	// adding this msg to the end of the queue so it is resent again
+				}
 				sendBackoff = time.Millisecond
 				msgToSend = nil
+				msgKind = utils.Message
+				msgId = 0
 				lastSuccess = time.Now()
 				continue
 			}
@@ -277,6 +333,8 @@ func (connection *Connection) sendMessageCycle() {
 			log.Warningf("Can't send message to peer %v for more than %v, cleaning messages", connection.PeerId.Pretty(), disconnectThreshold)
 			connection.messageQueue.Clear()
 			msgToSend = nil
+			msgKind = utils.Message
+			msgId = 0
 		}
 	}
 	close(connection.sendCycleFinished)
@@ -300,6 +358,10 @@ func (connection *Connection) Send(msg Envelop) {
 		return
 	}
 
+	connection.addToQueue(msg)
+}
+
+func (connection *Connection) addToQueue(msg Envelop) {
 	connection.messageQueue.Enqueue(msg)
 	messagesInQueue.WithLabelValues(connection.PeerId.Pretty()).Set(float64(connection.messageQueue.GetLen()))
 }
@@ -535,7 +597,7 @@ func (connection *Connection) resetOutboundStream() {
 
 func (connection *Connection) Terminate() {
 	connection.status.Store(Terminated)
-	connection.messageQueue.Enqueue(utils.NewEnvelop(nil, false))
+	connection.messageQueue.Enqueue(utils.NewEnvelop(nil, utils.Message))
 	connection.resetInboundStream()
 	connection.resetOutboundStream()
 	<-connection.lifecycleFinished
