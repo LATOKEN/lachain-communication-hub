@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"hash/crc32"
 	"io"
+	"lachain-communication-hub/utils"
 
 	"github.com/libp2p/go-libp2p-core/network"
 )
@@ -26,23 +27,44 @@ const (
 )
 
 type MessageFrame struct {
-	kind FrameKind
-	data []byte
+	kind	FrameKind
+	msgId	uint64
+	data	[]byte
 }
 
 func NewFrame(kind FrameKind, data []byte) MessageFrame {
 	return MessageFrame{
 		kind: kind,
+		msgId: utils.GetRandomUInt64(),
+		data: data,
+	}
+}
+
+func NewFrameWithId(kind FrameKind, data []byte, msgId uint64) MessageFrame {
+	return MessageFrame{
+		kind: kind,
+		msgId: msgId,
 		data: data,
 	}
 }
 
 func (frame *MessageFrame) Encode() []byte {
-	buf := make([]byte, 9+len(frame.data))                            // to avoid reallocation
-	binary.LittleEndian.PutUint32(buf[:4], uint32(len(frame.data)+5)) // len of message + crc32
-	buf[4] = byte(frame.kind)
-	copy(buf[5:], frame.data)
-	binary.LittleEndian.PutUint32(buf[5+len(frame.data):], crc32.ChecksumIEEE(frame.data))
+	msgLength := 1 + 8 + len(frame.data) + 4	// kind + msgId + data + crc32
+	kindLen := 1
+	msgIdLen := 8
+	buf := make([]byte, 4 + msgLength)	// to avoid reallocation, 4 extra bytes to put the length of the whole msg
+	offset := 0
+	binary.LittleEndian.PutUint32(buf[offset:offset+4], uint32(msgLength))
+	offset += 4
+	buf[offset] = byte(frame.kind)
+	offset += kindLen
+	binary.LittleEndian.PutUint64(buf[offset:offset+8], frame.msgId)
+	offset += msgIdLen
+	copy(buf[offset:], frame.data)
+	offset += len(frame.data)
+	// creating checksum with msgId will prevent others to spam with different msgId, because it is costly to compute the checksum
+	checksum := crc32.ChecksumIEEE(buf[offset-len(frame.data)-msgIdLen:offset])
+	binary.LittleEndian.PutUint32(buf[offset:], checksum)
 	return buf
 }
 
@@ -52,6 +74,10 @@ func (frame *MessageFrame) Data() []byte {
 
 func (frame *MessageFrame) Kind() FrameKind {
 	return frame.kind
+}
+
+func (frame *MessageFrame) MsgId() uint64 {
+	return frame.msgId
 }
 
 func ExtractLength(msg []byte) uint32 {
@@ -85,14 +111,17 @@ func ReadFromReader(reader *bufio.Reader) (MessageFrame, error) {
 	}
 
 	// check the checksum
+	kindLen := 1
+	msgIdLen := 8
 	checkSum := binary.LittleEndian.Uint32(result[len(result)-4:])
-	if checkSum != crc32.ChecksumIEEE(result[1:len(result)-4]) { // mismatched checksum
+	if checkSum != crc32.ChecksumIEEE(result[kindLen:len(result)-4]) { // mismatched checksum
 		return MessageFrame{}, MsgIntegrityError{}
 	}
 
 	return MessageFrame{
 		kind: FrameKind(result[0]),
-		data: result[1:len(result)-4],
+		msgId: binary.LittleEndian.Uint64(result[kindLen:kindLen+msgIdLen]),
+		data: result[kindLen+msgIdLen:len(result)-4],
 	}, nil
 }
 
