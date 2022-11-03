@@ -6,9 +6,18 @@ import (
 	"sync"
 )
 
+type MessageKind byte
+
+const (
+	Message    		= 0
+	Consensus		= 1
+	ConfirmReply	= 2
+)
+
 type MessageEnvelop struct {
-	consensus bool
-	data 	  []byte
+	kind	MessageKind
+	msgId 	uint64
+	data	[]byte
 }
 
 type MessageQueue struct {
@@ -17,19 +26,32 @@ type MessageQueue struct {
 	cond  *sync.Cond
 }
 
-func NewEnvelop(data []byte, consensus bool) MessageEnvelop {
+func NewEnvelop(data []byte, kind MessageKind) MessageEnvelop {
 	return MessageEnvelop {
-		consensus: consensus,
+		kind: kind,
+		msgId: GetRandomUInt64(),
 		data: data,
 	}
 }
 
-func (envelop *MessageEnvelop) IsConsensus() bool {
-	return envelop.consensus
+func NewEnvelopWithId(data []byte, kind MessageKind, msgId uint64) MessageEnvelop {
+	return MessageEnvelop {
+		kind: kind,
+		msgId: msgId,
+		data: data,
+	}
+}
+
+func (envelop *MessageEnvelop) Kind() MessageKind {
+	return envelop.kind
 }
 
 func (envelop *MessageEnvelop) Data() []byte {
 	return envelop.data
+}
+
+func (envelop *MessageEnvelop) MsgId() uint64 {
+	return envelop.msgId
 }
 
 func NewMessageQueue() *MessageQueue {
@@ -69,9 +91,9 @@ func (c *MessageQueue) frontUnlocked() (MessageEnvelop, error) {
 		if val, ok := c.queue.Front().Value.(MessageEnvelop); ok {
 			return val, nil
 		}
-		return NewEnvelop(nil, false), fmt.Errorf("Peek Error: Queue Datatype is incorrect")
+		return NewEnvelop(nil, Message), fmt.Errorf("Peek Error: Queue Datatype is incorrect")
 	}
-	return NewEnvelop(nil, false), fmt.Errorf("Peek Error: Queue is empty")
+	return NewEnvelop(nil, Message), fmt.Errorf("Peek Error: Queue is empty")
 }
 
 func (c *MessageQueue) GetLen() int {
