@@ -297,6 +297,8 @@ func (connection *Connection) sendMessageCycle() {
 					connection.confirmReceived[msgId] = false
 				}
 				break
+			default:
+				log.Errorf("Not implemented message kind: %v", msgKind)
 			}
 			connection.streamLock.Lock()
 			err := communication.Write(connection.outboundStream, frame)
