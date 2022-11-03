@@ -142,13 +142,13 @@ func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Point
 	data := C.GoBytes(dataPtr, dataLen)
 	//log.Tracef("SendMessage command to send %d bytes to %s", dataLen, hex.EncodeToString(pubKey))
 
-	var consensus bool
+	var msgKind utils.MessageKind
 	if flag == 0 {
-		consensus = false
+		msgKind = utils.Message
 	} else {
-		consensus = true
+		msgKind = utils.Consensus
 	}
-	message := utils.NewEnvelop(data, consensus)
+	message := utils.NewEnvelop(data, msgKind)
 	if bytes.Equal(pubKey, ZeroPub) {
 		localPeer.BroadcastMessage(message)
 	} else {
