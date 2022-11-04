@@ -58,7 +58,7 @@ func (frame *MessageFrame) Encode() []byte {
 	offset += 4
 	buf[offset] = byte(frame.kind)
 	offset += kindLen
-	binary.LittleEndian.PutUint64(buf[offset:offset+msgLength], frame.msgId)
+	binary.LittleEndian.PutUint64(buf[offset:offset+msgIdLen], frame.msgId)
 	offset += msgIdLen
 	copy(buf[offset:], frame.data)
 	offset += len(frame.data)
