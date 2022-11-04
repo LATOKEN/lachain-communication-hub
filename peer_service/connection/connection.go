@@ -85,6 +85,7 @@ type Connection struct {
 	signatureSent        *atomic.Int32
 	messageQueue         *utils.MessageQueue
 	confirmReceived		 map[uint64]bool
+	confirmLock			 sync.Mutex
 	inboundStream        network.Stream
 	outboundStream       network.Stream
 	streamLock           sync.Mutex
@@ -189,15 +190,7 @@ func (connection *Connection) receiveMessageCycle() {
 			case communication.ConfirmReply:
 				inboundMessages.WithLabelValues("confirmReply").Inc()
 				msgId := frame.MsgId()
-				_, ok := connection.confirmReceived[msgId]
-				if !ok {
-					log.Warningf(
-						"Got confirm message from peer %v with msgId %v. But we never sent message with this msgId", 
-						connection.PeerId.Pretty(), msgId,
-					)
-				} else {
-					connection.confirmReceived[msgId] = true
-				}
+				connection.confirmationReceived(msgId)
 				break
 			case communication.MessageConfirmRequest:
 				inboundMessages.WithLabelValues("messageConfirmRequest").Inc()
@@ -281,20 +274,20 @@ func (connection *Connection) sendMessageCycle() {
 				frame = communication.NewFrameWithId(communication.ConfirmReply, msgToSend, msgId)
 				break
 			case utils.Consensus:
-				confirm, ok := connection.confirmReceived[msgId]
+				confirm, ok := connection.checkConfirmation(msgId)
 				if ok && confirm {	// we already sent this msg and received confirmation
+					connection.removeMsgIdFromConfirm(msgId)
 					attempts = 0
 					msgToSend = nil
 					msgKind = utils.Message
 					msgId = 0
 					sendBackoff = time.Millisecond
 					lastSuccess = time.Now()
-					delete(connection.confirmReceived, msgId)
 					continue
 				}
 				frame = communication.NewFrameWithId(communication.MessageConfirmRequest, msgToSend, msgId)
 				if !ok {
-					connection.confirmReceived[msgId] = false
+					connection.addMsgIdToConfirm(msgId)
 				}
 				break
 			default:
@@ -595,6 +588,39 @@ func (connection *Connection) resetOutboundStream() {
 		log.Errorf("Failed to reset stream: %v", err)
 	}
 	connection.outboundStream = nil
+}
+
+func (connection *Connection) confirmationReceived(msgId uint64) {
+	connection.confirmLock.Lock()
+	defer connection.confirmLock.Unlock()
+	_, ok := connection.confirmReceived[msgId]
+	if !ok {
+		log.Warningf(
+			"Got confirm message from peer %v with msgId %v. But we never sent message with this msgId", 
+			connection.PeerId.Pretty(), msgId,
+		)
+	} else {
+		connection.confirmReceived[msgId] = true
+	}
+}
+
+func (connection *Connection) checkConfirmation(msgId uint64) (bool, bool) {
+	connection.confirmLock.Lock()
+	defer connection.confirmLock.Unlock()
+	confirm, ok := connection.confirmReceived[msgId]
+	return confirm, ok
+}
+
+func (connection *Connection) addMsgIdToConfirm(msgId uint64) {
+	connection.confirmLock.Lock()
+	defer connection.confirmLock.Unlock()
+	connection.confirmReceived[msgId] = false
+}
+
+func (connection *Connection) removeMsgIdFromConfirm(msgId uint64) {
+	connection.confirmLock.Lock()
+	defer connection.confirmLock.Unlock()
+	delete(connection.confirmReceived, msgId)
 }
 
 func (connection *Connection) Terminate() {
