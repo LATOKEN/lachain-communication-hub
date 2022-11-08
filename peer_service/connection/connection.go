@@ -198,10 +198,7 @@ func (connection *Connection) receiveMessageCycle() {
 				connection.receivedMsgId.Enqueue(msgId)
 				connection.checkSpamQueueCapacity()
 			} else {
-				log.Warningf(
-					"Got %v type msg with duplicate id %v with count %v, from peer %v. Ignoring msg", frame.Kind(), msgId, count,
-					connection.PeerId.Pretty(),
-				)
+				// getting msg with duplicate msgId, ignoring msg
 				continue
 			}
 			switch frame.Kind() {
