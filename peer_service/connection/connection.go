@@ -28,6 +28,8 @@ var log = loggo.GetLogger("connection")
 type Status int
 type Envelop = utils.MessageEnvelop
 
+const SpamStoreThreshold = 10000
+
 const (
 	NotConnected      = iota
 	JustConnected     = iota
@@ -84,6 +86,8 @@ type Connection struct {
 	signature            []byte
 	signatureSent        *atomic.Int32
 	messageQueue         *utils.MessageQueue
+	receivedMsgId		 *utils.SpamQueue
+	msgSpamCount		 map[uint64]uint32
 	confirmReceived		 map[uint64]bool
 	confirmLock			 sync.Mutex
 	inboundStream        network.Stream
@@ -117,6 +121,8 @@ func (connection *Connection) init(
 	connection.signatureSent = atomic.NewInt32(0)
 	connection.status = atomic.NewInt32(NotConnected)
 	connection.messageQueue = utils.NewMessageQueue()
+	connection.receivedMsgId = utils.NewSpamQueue()
+	connection.msgSpamCount = make(map[uint64]uint32)
 	connection.confirmReceived = make(map[uint64]bool)
 	connection.onPeerListUpdate = onPeerListUpdate
 	connection.onPublicKeyRecovered = onPublicKeyRecovered
@@ -186,15 +192,23 @@ func (connection *Connection) receiveMessageCycle() {
 			}
 			connection.inboundTPS.AddMeasurement(float64(len(frame.Data())))
 
+			msgId := frame.MsgId()
+			count := connection.increamentMsgSpamCount(msgId)
+			if count == 1 {
+				connection.receivedMsgId.Enqueue(msgId)
+				connection.checkSpamQueueCapacity()
+			} else {
+				// getting msg with duplicate msgId, ignoring msg
+				continue
+			}
 			switch frame.Kind() {
 			case communication.ConfirmReply:
 				inboundMessages.WithLabelValues("confirmReply").Inc()
-				msgId := frame.MsgId()
 				connection.confirmationReceived(msgId)
 				break
 			case communication.MessageConfirmRequest:
 				inboundMessages.WithLabelValues("messageConfirmRequest").Inc()
-				reply := utils.NewEnvelopWithId(make([]byte, 1), utils.ConfirmReply, frame.MsgId())
+				reply := utils.NewEnvelopWithId(make([]byte, 1), utils.ConfirmReply, msgId)
 				connection.addToQueue(reply)
 				connection.onMessage(frame.Data())
 				break
@@ -588,6 +602,46 @@ func (connection *Connection) resetOutboundStream() {
 		log.Errorf("Failed to reset stream: %v", err)
 	}
 	connection.outboundStream = nil
+}
+
+func (connection *Connection) spamCount(msgId uint64) uint32 {
+	// reading/writing from/to map needs to be handled with lock so that concurrent read/write does not happen
+	// this map is accessed only from receiveMessageCycle() so skipping lock mechanism
+	// remember to add lock mechanism if needed
+	count, ok := connection.msgSpamCount[msgId]
+	if ok {
+		return count
+	} else {
+		return 0
+	}
+}
+
+func (connection *Connection) removeMsgSpamCount(msgId uint64) {
+	// reading/writing from/to map needs to be handled with lock so that concurrent read/write does not happen
+	// this map is accessed only from receiveMessageCycle() so skipping lock mechanism
+	// remember to add lock mechanism if needed
+	delete(connection.msgSpamCount, msgId)
+}
+
+func (connection *Connection) increamentMsgSpamCount(msgId uint64) uint32 {
+	// reading/writing from/to map needs to be handled with lock so that concurrent read/write does not happen
+	// this map is accessed only from receiveMessageCycle() so skipping lock mechanism
+	// remember to add lock mechanism if needed
+	count, _ := connection.msgSpamCount[msgId]
+	connection.msgSpamCount[msgId] = count + 1
+	return count + 1
+}
+
+func (connection *Connection) checkSpamQueueCapacity() {
+	if connection.receivedMsgId.GetLen() >= SpamStoreThreshold {
+		msgId, err := connection.receivedMsgId.Dequeue()
+		if err == nil {
+			// reading/writing from/to map needs to be handled with lock so that concurrent read/write does not happen
+			// this map is accessed only from receiveMessageCycle() so skipping lock mechanism
+			// remember to add lock mechanism if needed
+			delete(connection.msgSpamCount, msgId)
+		}
+	}
 }
 
 func (connection *Connection) confirmationReceived(msgId uint64) {
