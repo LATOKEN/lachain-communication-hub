@@ -157,6 +157,24 @@ func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Point
 	}
 }
 
+//export BanPeer
+func BanPeer(pubKeyPtr unsafe.Pointer, pubKeyLen C.int) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	pubKey := C.GoBytes(pubKeyPtr, pubKeyLen)
+	pubKeyStr := hex.EncodeToString(pubKey)
+	localPeer.BanPeer(pubKeyStr)
+}
+
+//export RemoveFromBanList
+func RemoveFromBanList(pubKeyPtr unsafe.Pointer, pubKeyLen C.int) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	pubKey := C.GoBytes(pubKeyPtr, pubKeyLen)
+	pubKeyStr := hex.EncodeToString(pubKey)
+	localPeer.RemoveFromBanList(pubKeyStr)
+}
+
 //export LogLevel
 func LogLevel(s *C.char, len C.int) {
 	mutex.Lock()
