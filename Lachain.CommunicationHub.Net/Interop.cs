@@ -20,6 +20,12 @@ namespace Lachain.CommunicationHub.Net
     [SymbolName("GetMessages")]
     public unsafe delegate int HubGetMessages(byte* buffer, int maxLen);
 
+    [SymbolName("BanPeer")]
+    public unsafe delegate bool BanPeer(byte* buffer, int len);
+
+    [SymbolName("RemoveFromBanList")]
+    public unsafe delegate bool RemoveFromBanList(byte* buffer, int len);
+
     [SymbolName("StopHub")]
     public delegate bool HubStop();
 
