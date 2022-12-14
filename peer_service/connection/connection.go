@@ -98,6 +98,7 @@ type Connection struct {
 	peerCycleFinished    chan struct{}
 	inboundTPS           *throughput.Calculator
 	outboundTPS          *throughput.Calculator
+	isBanned			 bool
 }
 
 func (connection *Connection) init(
@@ -122,6 +123,7 @@ func (connection *Connection) init(
 	connection.getPeers = getPeers
 	connection.inboundTPS = throughput.New(time.Second, func(sum float64, n int32, duration time.Duration) {})
 	connection.outboundTPS = throughput.New(time.Second, func(sum float64, n int32, duration time.Duration) {})
+	connection.isBanned = false
 }
 
 func New(
@@ -186,7 +188,9 @@ func (connection *Connection) receiveMessageCycle() {
 			switch frame.Kind() {
 			case communication.Message:
 				inboundMessages.WithLabelValues("message").Inc()
-				connection.onMessage(frame.Data())
+				if !connection.isBanned {
+					connection.onMessage(frame.Data())
+				}
 				break
 			case communication.Signature:
 				inboundMessages.WithLabelValues("signature").Inc()
@@ -194,7 +198,9 @@ func (connection *Connection) receiveMessageCycle() {
 				break
 			case communication.GetPeersReply:
 				inboundMessages.WithLabelValues("peers").Inc()
-				connection.handlePeers(frame.Data())
+				if !connection.isBanned {
+					connection.handlePeers(frame.Data())
+				}
 				break
 			default:
 				log.Errorf("Unknown frame kind received from peer %v: %v", connection.PeerId.Pretty(), frame.Kind())
@@ -294,9 +300,21 @@ func (connection *Connection) sendPeersCycle() {
 	}
 }
 
+func (connection *Connection) BanPeer() {
+	connection.isBanned = true
+}
+
+func (connection *Connection) RemoveFromBanList() {
+	connection.isBanned = false
+}
+
 func (connection *Connection) Send(msg Envelop) {
 	if msg.Data() == nil {
 		log.Errorf("Got empty message to send to peer %v, ignoring", connection.PeerId.Pretty())
+		return
+	}
+	if connection.isBanned {
+		log.Warningf("Peer %v is banned, not sending any message", connection.PeerId.Pretty())
 		return
 	}
 
@@ -382,6 +400,9 @@ func (connection *Connection) handleSignature(data []byte) {
 }
 
 func (connection *Connection) sendPeers() {
+	if connection.isBanned {
+		return
+	}
 	if connection.outboundStream != nil {
 		peerConnections := connection.getPeers()
 		if len(peerConnections) == 0 {
