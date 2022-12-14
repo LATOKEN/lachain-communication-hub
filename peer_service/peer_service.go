@@ -29,6 +29,7 @@ type PeerService struct {
 	myExternalAddress ma.Multiaddr
 	connections       map[string]*connection.Connection
 	messages          map[string][]Envelop
+	bannedPeer		  map[string]bool
 	mutex             *sync.Mutex
 	msgHandler        func([]byte)
 	running           int32
@@ -51,6 +52,7 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	peerService.host = localHost
 	peerService.connections = make(map[string]*connection.Connection)
 	peerService.messages = make(map[string][]Envelop)
+	peerService.bannedPeer = make(map[string]bool)
 	peerService.mutex = mut
 	peerService.running = 1
 	peerService.quit = make(chan struct{})
@@ -140,6 +142,10 @@ func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection
 		conn.Send(msg)
 	}
 	peerService.messages[publicKey] = nil
+	banned, ok := peerService.bannedPeer[publicKey]
+	if ok && banned {
+		conn.BanPeer()
+	}
 }
 
 func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata) {
@@ -227,6 +233,32 @@ func (peerService *PeerService) connectionByPublicKey(publicKey string) *connect
 		}
 	}
 	return nil
+}
+
+func (peerService *PeerService) BanPeer(publicKey string) bool {
+	peerService.lock()
+	defer peerService.unlock()
+
+	peerService.bannedPeer[publicKey] = true
+	if conn := peerService.connectionByPublicKey(publicKey); conn != nil {
+		conn.BanPeer()
+		return true
+	}
+	log.Tracef("Trying to ban peer %v but not connected, removing all stored messages for this peer", publicKey)
+	return false
+}
+
+func (peerService *PeerService) RemoveFromBanList(publicKey string) bool {
+	peerService.lock()
+	defer peerService.unlock()
+
+	peerService.bannedPeer[publicKey] = false
+	if conn := peerService.connectionByPublicKey(publicKey); conn != nil {
+		conn.RemoveFromBanList()
+		return true
+	}
+	log.Tracef("Trying to unban peer %v but not connected", publicKey)
+	return false
 }
 
 func (peerService *PeerService) SendMessageToPeer(publicKey string, msg Envelop) bool {
@@ -337,6 +369,10 @@ func (peerService *PeerService) storeMessage(key string, msg Envelop) {
 	if conn := peerService.connectionByPublicKey(key); conn != nil {
 		conn.Send(msg)
 	} else {
+		banned, ok := peerService.bannedPeer[key]
+		if ok && banned {
+			return
+		}
 		peerService.messages[key] = append(peerService.messages[key], msg)
 	}
 }
