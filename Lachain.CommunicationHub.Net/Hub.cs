@@ -15,6 +15,8 @@ namespace Lachain.CommunicationHub.Net
         internal readonly Lazy<HubGetKey> HubGetKey;
         internal readonly Lazy<StartProfiler> StartProfiler;
         internal readonly Lazy<HubGenerateNewKey> GenerateNewKeyHub;
+        internal readonly Lazy<BanPeer> HubBanPeer;
+        internal readonly Lazy<RemoveFromBanList> HubRemoveFromBanList;
 
 
         const string Lib = "hub";
@@ -36,6 +38,8 @@ namespace Lachain.CommunicationHub.Net
             HubGetKey = LazyDelegate<HubGetKey>();
             StartProfiler = LazyDelegate<StartProfiler>();
             GenerateNewKeyHub = LazyDelegate<HubGenerateNewKey>();
+            HubBanPeer = LazyDelegate<BanPeer>();
+            HubRemoveFromBanList = LazyDelegate<RemoveFromBanList>();
         }
 
         Lazy<TDelegate> LazyDelegate<TDelegate>()
@@ -147,6 +151,28 @@ namespace Lachain.CommunicationHub.Net
                 fixed (byte* dataPtr = data)
                 {
                     Imports.SendMessage.Value(publicKeyPtr, publicKey.Length, dataPtr, data.Length, flag);
+                }
+            }
+        }
+
+        public static void BanPeer(byte[] publicKey)
+        {
+            unsafe
+            {
+                fixed (byte* publicKeyPtr = publicKey)
+                {
+                    Imports.HubBanPeer.Value(publicKeyPtr, publicKey.Length);
+                }
+            }
+        }
+
+        public static void RemoveFromBanList(byte[] publicKey)
+        {
+            unsafe
+            {
+                fixed (byte* publicKeyPtr = publicKey)
+                {
+                    Imports.HubRemoveFromBanList.Value(publicKeyPtr, publicKey.Length);
                 }
             }
         }
