@@ -29,6 +29,7 @@ type PeerService struct {
 	myExternalAddress ma.Multiaddr
 	connections       map[string]*connection.Connection
 	messages          map[string][]Envelop
+	peerIds			  map[uint32]string
 	bannedPeer		  map[string]bool
 	mutex             *sync.Mutex
 	msgHandler        func([]byte)
@@ -53,6 +54,7 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	peerService.connections = make(map[string]*connection.Connection)
 	peerService.messages = make(map[string][]Envelop)
 	peerService.bannedPeer = make(map[string]bool)
+	peerService.peerIds = make(map[uint32]string)
 	peerService.mutex = mut
 	peerService.running = 1
 	peerService.quit = make(chan struct{})
@@ -259,6 +261,23 @@ func (peerService *PeerService) RemoveFromBanList(publicKey string) bool {
 	}
 	log.Tracef("Trying to unban peer %v but not connected", publicKey)
 	return false
+}
+
+func (peerService *PeerService) SetPeerPublicKey(publicKey string, peerUniqId uint32) {
+	peerId, ok := peerService.peerIds[peerUniqId]
+	if ok {
+		connection, ok := peerService.connections[peerId]
+		if ok {
+			connection.TrySetPeerPublicKey(publicKey)
+		} else {
+			err := errors.New("No connection found by peer id " + peerId)
+			panic(err)
+		}
+	} else {
+		log.Errorf("No saved peer id found by unique id %v", peerUniqId)
+		err := errors.New("No saved peer id found by unique id")
+		panic(err)
+	}
 }
 
 func (peerService *PeerService) SendMessageToPeer(publicKey string, msg Envelop) bool {
