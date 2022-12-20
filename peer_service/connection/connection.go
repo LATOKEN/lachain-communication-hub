@@ -365,6 +365,30 @@ func (connection *Connection) SetSignature(signature []byte) {
 	}
 }
 
+func (connection *Connection) TrySetPeerPublicKey(publicKey string) {
+	if connection.status.Load() == Terminated {
+		return
+	}
+	if (len(connection.PeerPublicKey) > 0) {
+		if (publicKey != connection.PeerPublicKey) {
+			err := errors.New(
+				"Public key mismatch: trying to set public key " + publicKey + " for peer " + connection.PeerId.Pretty() + 
+				", but peer already has public key " + connection.PeerPublicKey,
+			)
+			panic(err)
+		}
+	} else {
+		// this indicates malicious behavior, because we can set verified public key from core only if we get a valid message
+		// from peer. But peer is not supposed to deliver its signature before it starts sending messages. So it means peer
+		// did not send the signature but sent a valid message
+		log.Warningf("Peer %v did not send its signature, but we set verified public key successfully", connection.PeerId.Pretty())
+		connection.PeerPublicKey = publicKey
+		connection.status.CAS(NotConnected, HandshakeComplete)
+		connection.status.CAS(JustConnected, HandshakeComplete)
+		connection.onPublicKeyRecovered(connection, connection.PeerPublicKey)
+	}
+}
+
 func (connection *Connection) handleSignature(data []byte) {
 	if connection.status.Load() == Terminated {
 		return
