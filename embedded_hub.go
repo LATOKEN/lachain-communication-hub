@@ -157,7 +157,7 @@ func SendMessage(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, dataPtr unsafe.Point
 	}
 }
 
-//export SetPeerPublicKey()
+//export SetPeerPublicKey
 func SetPeerPublicKey(pubKeyPtr unsafe.Pointer, pubKeyLen C.int, peerUniqId C.int) {
 	mutex.Lock()
 	defer mutex.Unlock()
