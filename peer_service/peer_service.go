@@ -103,12 +103,14 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
 		return
 	}
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
+	uniqId := peerService.getNonZeroRandomUint32()
 	conn := connection.New(
-		&peerService.host, id, protocolString, peerService.myExternalAddress, address,  nil,
+		&peerService.host, id, protocolString, peerService.myExternalAddress, address,  nil, uniqId,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
 	peerService.connections[id.Pretty()] = conn
+	peerService.peerIds[uniqId] = id.Pretty()
 }
 
 func (peerService *PeerService) onConnect(stream network.Stream) {
@@ -125,12 +127,14 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 	}
 	// TODO: manage peers to preserve important ones & exclude extra
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
+	uniqId := peerService.getNonZeroRandomUint32()
 	newConnect := connection.FromStream(
-		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, protocolString,
+		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, protocolString, uniqId,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 		peerService.AvailableRelays, peerService.GetPeers,
 	)
 	peerService.connections[id] = newConnect
+	peerService.peerIds[uniqId] = id
 }
 
 func (peerService *PeerService) onPublicKeyRecovered(conn *connection.Connection, publicKey string) {
@@ -169,13 +173,24 @@ func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata) 
 			}
 			continue
 		}
+		uniqId := peerService.getNonZeroRandomUint32()
 		peerService.connections[newPeer.Id.Pretty()] = connection.New(
 			&peerService.host, newPeer.Id, protocolString, peerService.myExternalAddress, newPeer.Addr,
-			peerService.Signature,
+			peerService.Signature, uniqId,
 			peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
 			peerService.AvailableRelays, peerService.GetPeers,
 		)
+		peerService.peerIds[uniqId] = newPeer.Id.Pretty()
 	}
+}
+
+func (peerService *PeerService) getNonZeroRandomUint32() uint32 {
+	var uniqId uint32
+	uniqId = 0
+	for uniqId == 0 {
+		uniqId = utils.GetRandomUInt32()
+	}
+	return uniqId
 }
 
 func (peerService *PeerService) SetSignature(signature []byte) bool {

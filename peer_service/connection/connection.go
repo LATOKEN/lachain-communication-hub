@@ -2,6 +2,7 @@ package connection
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"lachain-communication-hub/communication"
 	"lachain-communication-hub/config"
@@ -105,10 +106,11 @@ type Connection struct {
 	inboundTPS           *throughput.Calculator
 	outboundTPS          *throughput.Calculator
 	isBanned			 bool
+	UniqId				 uint32
 }
 
 func (connection *Connection) init(
-	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr,
+	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr, uniqId uint32,
 	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func() []peer.ID, getPeers func() []*Metadata,
 ) {
@@ -133,17 +135,18 @@ func (connection *Connection) init(
 	connection.inboundTPS = throughput.New(time.Second, func(sum float64, n int32, duration time.Duration) {})
 	connection.outboundTPS = throughput.New(time.Second, func(sum float64, n int32, duration time.Duration) {})
 	connection.isBanned = false
+	connection.UniqId = uniqId
 }
 
 func New(
 	host *core.Host, id peer.ID, protocol string, myAddress ma.Multiaddr, peerAddress ma.Multiaddr,
-	signature []byte,
+	signature []byte, uniqId uint32,
 	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func() []peer.ID, getPeers func() []*Metadata,
 ) *Connection {
 	log.Debugf("Creating connection with peer %v (address %v)", id.Pretty(), peerAddress.String())
 	connection := new(Connection)
-	connection.init(host, id, protocol, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
+	connection.init(host, id, protocol, myAddress, uniqId, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
 	connection.PeerAddress = peerAddress
 	go connection.receiveMessageCycle()
 	go connection.sendMessageCycle()
@@ -155,13 +158,13 @@ func New(
 }
 
 func FromStream(
-	host *core.Host, stream network.Stream, myAddress ma.Multiaddr, signature []byte, protocol string,
+	host *core.Host, stream network.Stream, myAddress ma.Multiaddr, signature []byte, protocol string, uniqId uint32,
 	onPeerListUpdate func([]*Metadata), onPublicKeyRecovered func(*Connection, string), onMessage func([]byte),
 	availableRelays func() []peer.ID, getPeers func() []*Metadata,
 ) *Connection {
 	log.Debugf("Creating connection with peer %v from inbound stream", stream.Conn().RemotePeer().Pretty())
 	connection := new(Connection)
-	connection.init(host, stream.Conn().RemotePeer(), protocol, myAddress, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
+	connection.init(host, stream.Conn().RemotePeer(), protocol, myAddress, uniqId, onPeerListUpdate, onPublicKeyRecovered, onMessage, availableRelays, getPeers)
 	connection.PeerAddress = stream.Conn().RemoteMultiaddr()
 	connection.inboundStream = stream
 	if signature != nil {
@@ -180,6 +183,18 @@ func (connection *Connection) SetPeerAddress(address ma.Multiaddr) {
 func (connection *Connection) IsActive() bool {
 	return connection.status.Load() != Terminated && connection.status.Load() != NotConnected &&
 		(connection.inboundStream != nil || connection.outboundStream != nil)
+}
+
+func (connection *Connection) messageReceived(data []byte) {
+	if len(connection.PeerPublicKey) > 0 {
+		connection.onMessage(data)
+	} else {
+		log.Warningf("Peer %v with id %v did not send signature but sent msg", connection.PeerId.Pretty(), connection.UniqId)
+		buf := make([]byte, 4+len(data))
+		binary.LittleEndian.PutUint32(buf[:4], connection.UniqId)
+		copy(buf[4:], data)
+		connection.onMessage(buf)
+	}
 }
 
 func (connection *Connection) receiveMessageCycle() {
@@ -217,7 +232,7 @@ func (connection *Connection) receiveMessageCycle() {
 			case communication.Message:
 				inboundMessages.WithLabelValues("message").Inc()
 				if !connection.isBanned {
-					connection.onMessage(frame.Data())
+					connection.messageReceived(frame.Data())
 				}
 				break
 			case communication.Signature:
