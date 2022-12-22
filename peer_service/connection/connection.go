@@ -337,39 +337,7 @@ func (connection *Connection) Send(msg Envelop) {
 }
 
 func (connection *Connection) sendSignature() {
-	log.Debugf("Sending signature to peer %v", connection.PeerId.Pretty())
-	backoff := time.Second
-	for connection.status.Load() != Terminated {
-		if connection.outboundStream != nil {
-			sigLen := 65
-			if config.ChainId >= 110 {
-				sigLen = 66
-			}
-			if len(connection.signature) != sigLen {
-				panic("bad signature length!")
-			}
-			var payload []byte
-			payload = append(payload, connection.signature...)
-			payload = append(payload, connection.myAddress.Bytes()...)
-
-			frame := communication.NewFrame(communication.Signature, payload)
-			connection.streamLock.Lock()
-			err := communication.Write(connection.outboundStream, frame)
-			connection.streamLock.Unlock()
-			if err == nil {
-				log.Tracef("Sent signature (len = %d bytes) to peer %v", len(frame.Data()), connection.PeerId.Pretty())
-				connection.outboundTPS.AddMeasurement(float64(len(frame.Data())))
-				backoff = time.Second
-				break
-			}
-			log.Errorf("Error while sending signature (len = %d bytes) to peer %v: %v", len(frame.Data()), connection.PeerId.Pretty(), err)
-		}
-		log.Tracef("Resending signature to peer %v in %v (nil stream: %v)", connection.PeerId.Pretty(), backoff, connection.outboundStream == nil)
-		time.Sleep(backoff)
-		if backoff < time.Minute {
-			backoff *= 2
-		}
-	}
+	log.Debugf("Not sending signature to anyone")
 }
 
 func (connection *Connection) SetSignature(signature []byte) {
