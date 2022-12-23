@@ -277,12 +277,12 @@ func (peerService *PeerService) RemoveFromBanList(publicKey string) bool {
 	return false
 }
 
-func (peerService *PeerService) SetPeerPublicKey(publicKey string, peerUniqId uint32) {
+func (peerService *PeerService) SetPeerPublicKey(publicKey string, peerUniqId uint32) bool {
 	peerId, ok := peerService.peerIds[peerUniqId]
 	if ok {
 		connection, ok := peerService.connections[peerId]
 		if ok {
-			connection.TrySetPeerPublicKey(publicKey)
+			return connection.TrySetPeerPublicKey(publicKey)
 		} else {
 			err := errors.New("No connection found by peer id " + peerId)
 			panic(err)
