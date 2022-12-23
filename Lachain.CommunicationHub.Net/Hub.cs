@@ -157,13 +157,13 @@ namespace Lachain.CommunicationHub.Net
             }
         }
 
-        public static void SetPeerPublicKey(byte[] publicKey, int peerId)
+        public static bool SetPeerPublicKey(byte[] publicKey, int peerId)
         {
             unsafe
             {
                 fixed (byte* publicKeyPtr = publicKey)
                 {
-                    Imports.HubSetPeerPublicKey.Value(publicKeyPtr, publicKey.Length, peerId);
+                    return Imports.HubSetPeerPublicKey.Value(publicKeyPtr, publicKey.Length, peerId);
                 }
             }
         }
