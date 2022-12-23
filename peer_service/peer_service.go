@@ -40,6 +40,7 @@ type PeerService struct {
 	networkName		  string
 	version           int32
 	minPeerVersion	  int32
+	totalPeers		  uint32
 }
 
 func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupportedVersion int32,
@@ -60,6 +61,7 @@ func New(priv_key crypto.PrivKey, networkName string, version int32, minimalSupp
 	peerService.quit = make(chan struct{})
 	peerService.msgHandler = handler
 	peerService.Signature = nil
+	peerService.totalPeers = 0
 	externalAddress, err := peerService.GetExternalMultiAddress()
 	if err != nil {
 		log.Errorf("Cannot determine my external address: %v", err)
@@ -103,7 +105,7 @@ func (peerService *PeerService) connect(id peer.ID, address ma.Multiaddr) {
 		return
 	}
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
-	uniqId := peerService.getNonZeroRandomUint32()
+	uniqId := peerService.getNextPeerId()
 	conn := connection.New(
 		&peerService.host, id, protocolString, peerService.myExternalAddress, address,  nil, uniqId,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
@@ -127,7 +129,7 @@ func (peerService *PeerService) onConnect(stream network.Stream) {
 	}
 	// TODO: manage peers to preserve important ones & exclude extra
 	protocolString := fmt.Sprintf(protocolFormat, peerService.networkName, peerService.version)
-	uniqId := peerService.getNonZeroRandomUint32()
+	uniqId := peerService.getNextPeerId()
 	newConnect := connection.FromStream(
 		&peerService.host, stream, peerService.myExternalAddress, peerService.Signature, protocolString, uniqId,
 		peerService.updatePeerList, peerService.onPublicKeyRecovered, peerService.msgHandler,
@@ -173,7 +175,7 @@ func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata) 
 			}
 			continue
 		}
-		uniqId := peerService.getNonZeroRandomUint32()
+		uniqId := peerService.getNextPeerId()
 		peerService.connections[newPeer.Id.Pretty()] = connection.New(
 			&peerService.host, newPeer.Id, protocolString, peerService.myExternalAddress, newPeer.Addr,
 			peerService.Signature, uniqId,
@@ -184,12 +186,9 @@ func (peerService *PeerService) updatePeerList(newPeers []*connection.Metadata) 
 	}
 }
 
-func (peerService *PeerService) getNonZeroRandomUint32() uint32 {
-	var uniqId uint32
-	uniqId = 0
-	for uniqId == 0 {
-		uniqId = utils.GetRandomUInt32()
-	}
+func (peerService *PeerService) getNextPeerId() uint32 {
+	uniqId := peerService.totalPeers
+	peerService.totalPeers++
 	return uniqId
 }
 

@@ -2,6 +2,7 @@ package connection
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/binary"
 	"errors"
 	"lachain-communication-hub/communication"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/juju/loggo"
 	core "github.com/libp2p/go-libp2p-core"
+	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
@@ -177,15 +179,18 @@ func (connection *Connection) IsActive() bool {
 }
 
 func (connection *Connection) messageReceived(data []byte) {
+	peerId := connection.UniqId
 	if len(connection.PeerPublicKey) > 0 {
-		connection.onMessage(data)
+		invalid := -1
+		peerId = uint32(invalid)
 	} else {
 		log.Warningf("Peer %v with id %v did not send signature but sent msg", connection.PeerId.Pretty(), connection.UniqId)
-		buf := make([]byte, 4+len(data))
-		binary.LittleEndian.PutUint32(buf[:4], connection.UniqId)
-		copy(buf[4:], data)
-		connection.onMessage(buf)
+		peerId = connection.UniqId
 	}
+	buf := make([]byte, 4+len(data))
+	binary.LittleEndian.PutUint32(buf[:4], peerId)
+	copy(buf[4:], data)
+	connection.onMessage(buf)
 }
 
 func (connection *Connection) receiveMessageCycle() {
@@ -386,13 +391,19 @@ func (connection *Connection) TrySetPeerPublicKey(publicKey string) {
 	}
 	if (len(connection.PeerPublicKey) > 0) {
 		if (publicKey != connection.PeerPublicKey) {
-			err := errors.New(
-				"Public key mismatch: trying to set public key " + publicKey + " for peer " + connection.PeerId.Pretty() + 
-				", but peer already has public key " + connection.PeerPublicKey,
+			log.Errorf(
+				"Peer %v already sent signature with public key %v, but sent msg with another public key %v",
+				connection.PeerId.Pretty(), connection.PeerPublicKey, publicKey,
 			)
-			panic(err)
+			connection.resetInboundStream()
+			return
 		}
 	} else {
+		ecdsaPubKey := utils.HexToPublicKey(publicKey)
+		if connection.validatePublicKeyWithPeerId(ecdsaPubKey) == false {
+			connection.resetInboundStream()
+			return
+		}
 		// this indicates malicious behavior, because we can set verified public key from core only if we get a valid message
 		// from peer. But peer is not supposed to deliver its signature before it starts sending messages. So it means peer
 		// did not send the signature but sent a valid message
@@ -424,6 +435,10 @@ func (connection *Connection) handleSignature(data []byte) {
 		connection.resetInboundStream()
 		return
 	}
+	if connection.validatePublicKeyWithPeerId(publicKey) == false {
+		connection.resetInboundStream()
+		return
+	}
 	address, err := ma.NewMultiaddrBytes(addressBytes)
 	if err != nil {
 		log.Errorf("Peer %v sent incorrect address, resetting connection: %v", connection.PeerId.Pretty(), err)
@@ -436,6 +451,27 @@ func (connection *Connection) handleSignature(data []byte) {
 	connection.status.CAS(NotConnected, HandshakeComplete)
 	connection.status.CAS(JustConnected, HandshakeComplete)
 	connection.onPublicKeyRecovered(connection, connection.PeerPublicKey)
+}
+
+func (connection *Connection) validatePublicKeyWithPeerId(publicKey *ecdsa.PublicKey) bool {
+	pubKeyCrypto, err := crypto.ECDSAPublicKeyFromPubKey(*publicKey)
+	if err != nil {
+		log.Errorf("Peer %v sent incorrect public key, resetting connection: %v", connection.PeerId.Pretty(), err)
+		return false
+	}
+	peerIdRecovered, err := peer.IDFromPublicKey(pubKeyCrypto)
+	if err != nil {
+		log.Errorf("Peer %v sent incorrect public key, resetting connection: %v", connection.PeerId.Pretty(), err)
+		return false
+	}
+	if (peerIdRecovered.Pretty() != connection.PeerId.Pretty()) {
+		log.Errorf(
+			"Peer %v sent incorrect public key, recovered peer id from public key is: {%v}. resetting connection: %v",
+			connection.PeerId.Pretty(), peerIdRecovered.Pretty(), err,
+		)
+		return false
+	}
+	return true
 }
 
 func (connection *Connection) sendPeers() {
