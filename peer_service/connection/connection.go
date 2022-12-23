@@ -385,9 +385,9 @@ func (connection *Connection) SetSignature(signature []byte) {
 	}
 }
 
-func (connection *Connection) TrySetPeerPublicKey(publicKey string) {
+func (connection *Connection) TrySetPeerPublicKey(publicKey string) bool {
 	if connection.status.Load() == Terminated {
-		return
+		return false
 	}
 	if (len(connection.PeerPublicKey) > 0) {
 		if (publicKey != connection.PeerPublicKey) {
@@ -396,13 +396,13 @@ func (connection *Connection) TrySetPeerPublicKey(publicKey string) {
 				connection.PeerId.Pretty(), connection.PeerPublicKey, publicKey,
 			)
 			connection.resetInboundStream()
-			return
+			return false
 		}
 	} else {
 		ecdsaPubKey := utils.HexToPublicKey(publicKey)
 		if connection.validatePublicKeyWithPeerId(ecdsaPubKey) == false {
 			connection.resetInboundStream()
-			return
+			return false
 		}
 		// this indicates malicious behavior, because we can set verified public key from core only if we get a valid message
 		// from peer. But peer is not supposed to deliver its signature before it starts sending messages. So it means peer
@@ -413,6 +413,7 @@ func (connection *Connection) TrySetPeerPublicKey(publicKey string) {
 		connection.status.CAS(JustConnected, HandshakeComplete)
 		connection.onPublicKeyRecovered(connection, connection.PeerPublicKey)
 	}
+	return true
 }
 
 func (connection *Connection) handleSignature(data []byte) {
