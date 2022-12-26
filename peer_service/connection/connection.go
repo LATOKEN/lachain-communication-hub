@@ -15,7 +15,6 @@ import (
 
 	"github.com/juju/loggo"
 	core "github.com/libp2p/go-libp2p-core"
-	"github.com/libp2p/go-libp2p-core/crypto"
 	"github.com/libp2p/go-libp2p-core/network"
 	"github.com/libp2p/go-libp2p-core/peer"
 	"github.com/libp2p/go-libp2p-core/protocol"
@@ -188,16 +187,11 @@ func (connection *Connection) IsActive() bool {
 }
 
 func (connection *Connection) messageReceived(data []byte) {
-	peerId := connection.UniqId
-	if len(connection.PeerPublicKey) > 0 {
-		invalid := -1
-		peerId = uint32(invalid)
-	} else {
+	if len(connection.PeerPublicKey) == 0 {
 		log.Warningf("Peer %v with id %v did not send signature but sent msg", connection.PeerId.Pretty(), connection.UniqId)
-		peerId = connection.UniqId
 	}
 	buf := make([]byte, 4+len(data))
-	binary.LittleEndian.PutUint32(buf[:4], peerId)
+	binary.LittleEndian.PutUint32(buf[:4], connection.UniqId)
 	copy(buf[4:], data)
 	connection.onMessage(buf)
 }
@@ -460,30 +454,29 @@ func (connection *Connection) TrySetPeerPublicKey(publicKey string) bool {
 	if connection.status.Load() == Terminated {
 		return false
 	}
-	if (len(connection.PeerPublicKey) > 0) {
-		if (publicKey != connection.PeerPublicKey) {
-			log.Errorf(
-				"Peer %v already sent signature with public key %v, but sent msg with another public key %v",
-				connection.PeerId.Pretty(), connection.PeerPublicKey, publicKey,
-			)
-			connection.resetInboundStream()
-			return false
-		}
-	} else {
-		ecdsaPubKey := utils.HexToPublicKey(publicKey)
-		if connection.validatePublicKeyWithPeerId(ecdsaPubKey) == false {
-			connection.resetInboundStream()
-			return false
-		}
-		// this indicates malicious behavior, because we can set verified public key from core only if we get a valid message
-		// from peer. But peer is not supposed to deliver its signature before it starts sending messages. So it means peer
-		// did not send the signature but sent a valid message
-		log.Warningf("Peer %v did not send its signature, but we set verified public key successfully", connection.PeerId.Pretty())
-		connection.PeerPublicKey = publicKey
-		connection.status.CAS(NotConnected, HandshakeComplete)
-		connection.status.CAS(JustConnected, HandshakeComplete)
-		connection.onPublicKeyRecovered(connection, connection.PeerPublicKey)
+	log.Tracef("TrySetPeerPublicKey %v for peer %v", publicKey, connection.PeerId.Pretty())
+	ecdsaPubKey, err := utils.HexToPublicKey(publicKey)
+	if err != nil {
+		log.Errorf("Cannot generate ecdsa pubkey from hex pubkey %v", publicKey)
+		connection.resetInboundStream()
+		return false
 	}
+	if connection.validatePublicKey(ecdsaPubKey) == false {
+		connection.resetInboundStream()
+		return false
+	}
+	if len(connection.PeerPublicKey) > 0 {
+		// we already have public key set
+		return true
+	}
+	// this indicates malicious behavior, because we can set verified public key from core only if we get a valid message
+	// from peer. But peer is not supposed to deliver its signature before it starts sending messages. So it means peer
+	// did not send the signature but sent a valid message
+	log.Warningf("Peer %v did not send its signature, but we set verified public key successfully", connection.PeerId.Pretty())
+	connection.PeerPublicKey = publicKey
+	connection.status.CAS(NotConnected, HandshakeComplete)
+	connection.status.CAS(JustConnected, HandshakeComplete)
+	connection.onPublicKeyRecovered(connection, connection.PeerPublicKey)
 	return true
 }
 
@@ -491,6 +484,7 @@ func (connection *Connection) handleSignature(data []byte) {
 	if connection.status.Load() == Terminated {
 		return
 	}
+	log.Tracef("Got signature from peer %v", connection.PeerId.Pretty())
 	sigLen := 65
 	if config.ChainId >= 110 {
 		sigLen = 66
@@ -507,7 +501,7 @@ func (connection *Connection) handleSignature(data []byte) {
 		connection.resetInboundStream()
 		return
 	}
-	if connection.validatePublicKeyWithPeerId(publicKey) == false {
+	if connection.validatePublicKey(publicKey) == false {
 		connection.resetInboundStream()
 		return
 	}
@@ -525,23 +519,18 @@ func (connection *Connection) handleSignature(data []byte) {
 	connection.onPublicKeyRecovered(connection, connection.PeerPublicKey)
 }
 
-func (connection *Connection) validatePublicKeyWithPeerId(publicKey *ecdsa.PublicKey) bool {
-	pubKeyCrypto, err := crypto.ECDSAPublicKeyFromPubKey(*publicKey)
-	if err != nil {
-		log.Errorf("Peer %v sent incorrect public key, resetting connection: %v", connection.PeerId.Pretty(), err)
-		return false
-	}
-	peerIdRecovered, err := peer.IDFromPublicKey(pubKeyCrypto)
-	if err != nil {
-		log.Errorf("Peer %v sent incorrect public key, resetting connection: %v", connection.PeerId.Pretty(), err)
-		return false
-	}
-	if (peerIdRecovered.Pretty() != connection.PeerId.Pretty()) {
-		log.Errorf(
-			"Peer %v sent incorrect public key, recovered peer id from public key is: {%v}. resetting connection: %v",
-			connection.PeerId.Pretty(), peerIdRecovered.Pretty(), err,
-		)
-		return false
+func (connection *Connection) validatePublicKey(publicKey *ecdsa.PublicKey) bool {
+	pubKeyHex := utils.PublicKeyToHexString(publicKey)
+	if len(connection.PeerPublicKey) > 0 {
+		if pubKeyHex != connection.PeerPublicKey {
+			log.Errorf(
+				"Peer %v already sent correct public key %v, but sent another public key %v",
+				connection.PeerId.Pretty(), connection.PeerPublicKey, pubKeyHex,
+			)
+			return false
+		} else {
+			return true
+		}
 	}
 	return true
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/juju/loggo"
 )
@@ -82,15 +83,16 @@ func PublicKeyToBytes(publicKey *ecdsa.PublicKey) []byte {
 	return crypto.CompressPubkey(publicKey)
 }
 
-func HexToPublicKey(publicKey string) *ecdsa.PublicKey {
+func HexToPublicKey(publicKey string) (*ecdsa.PublicKey, error) {
 	publicKeyBytes := HexToBytes(publicKey)
 
 	pub, err := crypto.DecompressPubkey(publicKeyBytes)
 	if err != nil {
 		log.Errorf("can't unmarshal public key: %s", publicKey)
+		return nil, err
 	}
 
-	return pub
+	return pub, nil
 }
 
 func HexToBytes(publicKey string) []byte {
