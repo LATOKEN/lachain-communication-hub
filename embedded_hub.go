@@ -255,5 +255,3 @@ func GenerateNewKey(buffer unsafe.Pointer, bufferLen C.int) C.int {
 	C.memcpy(buffer, unsafe.Pointer(&data[0]), C.size_t(len(data)))
 	return C.int(len(data))
 }
-
-func main() {}
